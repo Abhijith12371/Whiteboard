@@ -1,0 +1,631 @@
+import { useRef, useEffect, useState, useMemo } from 'react'
+import { Stage, Layer, Rect, Circle, Line, Text, Group, Image as KonvaImage, Arrow } from 'react-konva'
+import { useUIStore } from '../../store/uiStore'
+import { useBoardStore } from '../../store/boardStore'
+import Konva from 'konva'
+import type { KonvaEventObject } from 'konva/lib/Node'
+import { SelectionTransformer } from './SelectionTransformer'
+
+const URLImage = (props: any) => {
+  const [image, setImage] = useState<HTMLImageElement | null>(null)
+
+  useEffect(() => {
+    const img = new window.Image()
+    img.src = props.src
+    img.onload = () => {
+      setImage(img)
+    }
+  }, [props.src])
+
+  return <KonvaImage image={image || undefined} {...props} />
+}
+
+export const Canvas: React.FC = () => {
+  const stageRef = useRef<Konva.Stage>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  
+  const isSpacePressed = useUIStore((state) => state.isSpacePressed)
+  const activeTool = useUIStore((state) => state.activeTool)
+  const selectedIds = useUIStore((state) => state.selectedIds)
+  const setSelectedIds = useUIStore((state) => state.setSelectedIds)
+  
+  const setStoreScale = useBoardStore((state) => state.setScale)
+  const setStorePosition = useBoardStore((state) => state.setPosition)
+  const updateObject = useBoardStore((state) => state.updateObject)
+  const objects = useBoardStore((state) => state.objects)
+  const objectIds = useBoardStore((state) => state.objectIds)
+
+  // Derive ordered array stably — avoids infinite loop from inline .map() in selector
+  const boardObjects = useMemo(
+    () => objectIds.map(id => objects[id]).filter(Boolean),
+    [objectIds, objects]
+  )
+
+  const [isMiddleClickPan, setIsMiddleClickPan] = useState(false)
+  const [drawingObject, setDrawingObject] = useState<any>(null)
+
+  const isPanActive = isSpacePressed || activeTool === 'pan' || isMiddleClickPan
+
+  useEffect(() => {
+    const handleGlobalMouseUp = (e: MouseEvent) => {
+      if (e.button === 1) {
+        setIsMiddleClickPan(false)
+      }
+    }
+    window.addEventListener('mouseup', handleGlobalMouseUp)
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp)
+  }, [])
+
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        setSize({
+          width: containerRef.current.offsetWidth,
+          height: containerRef.current.offsetHeight,
+        })
+      }
+    }
+    
+    updateSize()
+    window.addEventListener('resize', updateSize)
+    return () => window.removeEventListener('resize', updateSize)
+  }, [])
+
+  const handleWheel = (e: KonvaEventObject<WheelEvent>) => {
+    e.evt.preventDefault()
+    
+    const stage = stageRef.current
+    if (!stage) return
+
+    const scaleBy = 1.05
+    const oldScale = stage.scaleX()
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return
+
+    const mousePointTo = {
+      x: (pointer.x - stage.x()) / oldScale,
+      y: (pointer.y - stage.y()) / oldScale,
+    }
+
+    const isTouchpad = Math.abs((e.evt as any).wheelDeltaY) !== 120
+    
+    if (e.evt.ctrlKey || !isTouchpad) {
+      // Zoom
+      const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy
+      const clampedScale = Math.max(0.1, Math.min(newScale, 10))
+
+      stage.scale({ x: clampedScale, y: clampedScale })
+      
+      const newPos = {
+        x: pointer.x - mousePointTo.x * clampedScale,
+        y: pointer.y - mousePointTo.y * clampedScale,
+      }
+      stage.position(newPos)
+      
+      setStoreScale(clampedScale)
+      setStorePosition(newPos)
+    } else {
+      // Pan with trackpad
+      const newPos = {
+        x: stage.x() - e.evt.deltaX,
+        y: stage.y() - e.evt.deltaY,
+      }
+      stage.position(newPos)
+      setStorePosition(newPos)
+    }
+  }
+
+  const handleDragEnd = () => {
+    if (stageRef.current) {
+      setStorePosition({
+        x: stageRef.current.x(),
+        y: stageRef.current.y(),
+      })
+    }
+  }
+
+  const getRelativePointerPosition = (stage: Konva.Stage) => {
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return null
+    return {
+      x: (pointer.x - stage.x()) / stage.scaleX(),
+      y: (pointer.y - stage.y()) / stage.scaleY(),
+    }
+  }
+
+  const handleMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+    if (e.evt.button === 1) {
+      setIsMiddleClickPan(true)
+      return
+    }
+
+    if (isPanActive) return
+
+    const stage = e.target.getStage()
+    if (!stage) return
+
+    const clickedOnEmpty = e.target === stage
+
+    if (clickedOnEmpty) {
+      setSelectedIds([])
+    }
+
+    const pos = getRelativePointerPosition(stage)
+    if (!pos) return
+
+    if (activeTool === 'rectangle' || activeTool === 'circle') {
+      setSelectedIds([])
+      setDrawingObject({
+        id: crypto.randomUUID(),
+        type: activeTool,
+        x: pos.x,
+        y: pos.y,
+        width: 0,
+        height: 0,
+        fill: 'transparent',
+        stroke: '#09090b', // Foreground color approx
+        strokeWidth: 2,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        zIndex: 0
+      })
+    } else if (activeTool === 'pen' || activeTool === 'eraser') {
+      setSelectedIds([])
+      setDrawingObject({
+        id: crypto.randomUUID(),
+        type: 'path',
+        x: 0, 
+        y: 0,
+        points: [pos.x, pos.y],
+        width: 0,
+        height: 0,
+        fill: 'transparent',
+        stroke: activeTool === 'eraser' ? '#ffffff' : '#09090b', 
+        strokeWidth: activeTool === 'eraser' ? 20 : 3,
+        tension: 0.5,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        zIndex: 0,
+        tool: activeTool
+      })
+    } else if (activeTool === 'arrow') {
+      setSelectedIds([])
+      setDrawingObject({
+        id: crypto.randomUUID(),
+        type: 'arrow',
+        x: 0,
+        y: 0,
+        points: [pos.x, pos.y, pos.x, pos.y],
+        width: 0,
+        height: 0,
+        fill: 'transparent',
+        stroke: '#09090b',
+        strokeWidth: 2,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        zIndex: 0
+      })
+    } else if (activeTool === 'text' || activeTool === 'sticky') {
+      const id = crypto.randomUUID()
+      const newObj = {
+        id,
+        type: activeTool,
+        x: pos.x,
+        y: pos.y,
+        width: activeTool === 'sticky' ? 200 : 150,
+        height: activeTool === 'sticky' ? 200 : 50,
+        text: activeTool === 'sticky' ? 'Note' : 'Text',
+        fontSize: activeTool === 'sticky' ? 20 : 24,
+        fontFamily: 'sans-serif',
+        fill: '#09090b',
+        color: activeTool === 'sticky' ? '#fef08a' : 'transparent', // yellow-200
+        fontWeight: 'normal',
+        fontStyle: 'normal',
+        align: 'left',
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        zIndex: 0
+      }
+      
+      useBoardStore.getState().addObject(newObj as any)
+      setSelectedIds([id])
+      useUIStore.getState().setActiveTool('select')
+    }
+  }
+
+  const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
+    if (!drawingObject) return
+
+    const stage = e.target.getStage()
+    if (!stage) return
+
+    const pos = getRelativePointerPosition(stage)
+    if (!pos) return
+
+    if (drawingObject.type === 'rectangle' || drawingObject.type === 'circle') {
+      setDrawingObject({
+        ...drawingObject,
+        width: pos.x - drawingObject.x,
+        height: pos.y - drawingObject.y,
+      })
+    } else if (drawingObject.type === 'path') {
+      setDrawingObject({
+        ...drawingObject,
+        points: [...drawingObject.points, pos.x, pos.y]
+      })
+    } else if (drawingObject.type === 'arrow') {
+      setDrawingObject({
+        ...drawingObject,
+        points: [drawingObject.points[0], drawingObject.points[1], pos.x, pos.y]
+      })
+    }
+  }
+
+  const handleMouseUp = (_e: KonvaEventObject<MouseEvent>) => {
+    if (!drawingObject) return
+
+    if (drawingObject.type === 'path') {
+      if (drawingObject.points.length > 2) {
+        // Calculate actual bounding box for selection/transform later
+        const xs = drawingObject.points.filter((_: number, i: number) => i % 2 === 0)
+        const ys = drawingObject.points.filter((_: number, i: number) => i % 2 !== 0)
+        const minX = Math.min(...xs)
+        const maxX = Math.max(...xs)
+        const minY = Math.min(...ys)
+        const maxY = Math.max(...ys)
+        
+        let finalObj = {
+          ...drawingObject,
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: Math.max(5, maxY - minY),
+          // Convert global points to local points relative to x,y
+          points: drawingObject.points.map((val: number, i: number) => i % 2 === 0 ? val - minX : val - minY)
+        }
+        
+        useBoardStore.getState().addObject(finalObj)
+      }
+    } else if (drawingObject.type === 'arrow') {
+      const dx = drawingObject.points[2] - drawingObject.points[0]
+      const dy = drawingObject.points[3] - drawingObject.points[1]
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist > 5) {
+        const minX = Math.min(drawingObject.points[0], drawingObject.points[2])
+        const maxX = Math.max(drawingObject.points[0], drawingObject.points[2])
+        const minY = Math.min(drawingObject.points[1], drawingObject.points[3])
+        const maxY = Math.max(drawingObject.points[1], drawingObject.points[3])
+
+        let finalObj = {
+          ...drawingObject,
+          x: minX,
+          y: minY,
+          width: Math.max(5, maxX - minX),
+          height: Math.max(5, maxY - minY),
+          points: [
+            drawingObject.points[0] - minX,
+            drawingObject.points[1] - minY,
+            drawingObject.points[2] - minX,
+            drawingObject.points[3] - minY
+          ]
+        }
+        useBoardStore.getState().addObject(finalObj)
+        setSelectedIds([finalObj.id])
+        useUIStore.getState().setActiveTool('select')
+      }
+    } else if (Math.abs(drawingObject.width) > 5 || Math.abs(drawingObject.height) > 5) {
+      // Normalize negative width/height for shapes
+      let finalObj = { ...drawingObject }
+      if (finalObj.width < 0) {
+        finalObj.x += finalObj.width
+        finalObj.width = Math.abs(finalObj.width)
+      }
+      if (finalObj.height < 0) {
+        finalObj.y += finalObj.height
+        finalObj.height = Math.abs(finalObj.height)
+      }
+      useBoardStore.getState().addObject(finalObj)
+      
+      setSelectedIds([finalObj.id])
+      useUIStore.getState().setActiveTool('select')
+    }
+    
+    setDrawingObject(null)
+  }
+
+  const handleObjectClick = (e: KonvaEventObject<MouseEvent>, id: string) => {
+    if (activeTool !== 'select') return
+    e.cancelBubble = true
+    
+    if (e.evt.shiftKey) {
+      if (selectedIds.includes(id)) {
+        setSelectedIds(selectedIds.filter(selectedId => selectedId !== id))
+      } else {
+        setSelectedIds([...selectedIds, id])
+      }
+    } else {
+      setSelectedIds([id])
+    }
+  }
+
+  const handleObjectDragEnd = (e: KonvaEventObject<DragEvent>, id: string) => {
+    updateObject(id, {
+      x: e.target.x(),
+      y: e.target.y()
+    })
+  }
+
+  const handleTransformEnd = (e: KonvaEventObject<Event>, id: string) => {
+    const node = e.target
+    const scaleX = node.scaleX()
+    const scaleY = node.scaleY()
+    
+    // Reset scale to 1 and apply to width/height to avoid weird scaling issues down the line
+    node.scaleX(1)
+    node.scaleY(1)
+
+    const obj = useBoardStore.getState().objects[id]
+    
+    updateObject(id, {
+      x: node.x(),
+      y: node.y(),
+      rotation: node.rotation(),
+      width: Math.max(5, obj.width * scaleX),
+      height: Math.max(5, obj.height * scaleY),
+    })
+  }
+
+  // Grid computed from current stage transform
+  const stageNode = stageRef.current
+  const bgSize = 20 * (stageNode?.scaleX() || 1)
+  const bgPos = {
+    x: (stageNode?.x() || 0) % bgSize,
+    y: (stageNode?.y() || 0) % bgSize
+  }
+
+  return (
+    <div 
+      ref={containerRef} 
+      className="w-full h-full bg-muted/20 relative outline-none"
+      style={{ 
+        cursor: isPanActive ? (isMiddleClickPan ? 'grabbing' : 'grab') : (activeTool === 'select' ? 'default' : 'crosshair'),
+        backgroundImage: `radial-gradient(circle, var(--muted-foreground) 1px, transparent 1px)`,
+        backgroundSize: `${bgSize}px ${bgSize}px`,
+        backgroundPosition: `${bgPos.x}px ${bgPos.y}px`,
+        opacity: 0.8
+      }}
+    >
+      {size.width > 0 && (
+        <Stage 
+          ref={stageRef}
+          width={size.width} 
+          height={size.height}
+          draggable={isPanActive}
+          onWheel={handleWheel}
+          onDragEnd={handleDragEnd}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+        >
+          <Layer>
+            {boardObjects.map((obj) => {
+              if (obj.type === 'rectangle') {
+                const rectObj = obj as any
+                return (
+                  <Rect 
+                    key={obj.id} 
+                    id={obj.id}
+                    {...rectObj} 
+                    cornerRadius={4}
+                    draggable={activeTool === 'select' && !obj.locked}
+                    onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
+                    onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
+                  />
+                )
+              }
+              if ((obj.type as string) === 'circle') {
+                const circObj = obj as any
+                return (
+                  <Circle 
+                    key={obj.id}
+                    id={obj.id}
+                    x={circObj.x + circObj.width / 2} 
+                    y={circObj.y + circObj.height / 2} 
+                    radius={Math.abs(Math.max(circObj.width, circObj.height) / 2)} 
+                    fill={circObj.fill}
+                    stroke={circObj.stroke}
+                    strokeWidth={circObj.strokeWidth}
+                    rotation={circObj.rotation}
+                    draggable={activeTool === 'select' && !obj.locked}
+                    onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
+                    onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
+                  />
+                )
+              }
+              if (obj.type === 'path') {
+                const pathObj = obj as any
+                return (
+                  <Line
+                    key={obj.id}
+                    id={obj.id}
+                    x={pathObj.x}
+                    y={pathObj.y}
+                    points={pathObj.points}
+                    stroke={pathObj.stroke}
+                    strokeWidth={pathObj.strokeWidth}
+                    tension={pathObj.tension}
+                    lineCap="round"
+                    lineJoin="round"
+                    globalCompositeOperation={
+                      pathObj.tool === 'eraser' ? 'destination-out' : 'source-over'
+                    }
+                    rotation={pathObj.rotation}
+                    draggable={activeTool === 'select' && !obj.locked}
+                    onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
+                    onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
+                  />
+                )
+              }
+              if (obj.type === 'text') {
+                const textObj = obj as any
+                return (
+                  <Text
+                    key={obj.id}
+                    id={obj.id}
+                    x={textObj.x}
+                    y={textObj.y}
+                    width={textObj.width}
+                    height={textObj.height}
+                    text={textObj.text}
+                    fontSize={textObj.fontSize}
+                    fontFamily={textObj.fontFamily}
+                    fill={textObj.fill}
+                    fontStyle={textObj.fontStyle}
+                    align={textObj.align}
+                    rotation={textObj.rotation}
+                    draggable={activeTool === 'select' && !obj.locked}
+                    onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
+                    onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
+                  />
+                )
+              }
+              if (obj.type === 'sticky') {
+                const stickyObj = obj as any
+                return (
+                  <Group
+                    key={obj.id}
+                    id={obj.id}
+                    x={stickyObj.x}
+                    y={stickyObj.y}
+                    width={stickyObj.width}
+                    height={stickyObj.height}
+                    rotation={stickyObj.rotation}
+                    draggable={activeTool === 'select' && !obj.locked}
+                    onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
+                    onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
+                  >
+                    <Rect
+                      width={stickyObj.width}
+                      height={stickyObj.height}
+                      fill={stickyObj.color}
+                      shadowColor="black"
+                      shadowBlur={10}
+                      shadowOpacity={0.1}
+                      shadowOffset={{ x: 0, y: 4 }}
+                      cornerRadius={2}
+                    />
+                    <Text
+                      width={stickyObj.width}
+                      height={stickyObj.height}
+                      text={stickyObj.text}
+                      fontSize={stickyObj.fontSize}
+                      fontFamily={stickyObj.fontFamily}
+                      fill={stickyObj.fill}
+                      fontStyle={stickyObj.fontStyle}
+                      align="center"
+                      verticalAlign="middle"
+                      padding={10}
+                    />
+                  </Group>
+                )
+              }
+              if (obj.type === 'image') {
+                const imgObj = obj as any
+                return (
+                  <URLImage
+                    key={obj.id}
+                    id={obj.id}
+                    src={imgObj.src}
+                    x={imgObj.x}
+                    y={imgObj.y}
+                    width={imgObj.width}
+                    height={imgObj.height}
+                    rotation={imgObj.rotation}
+                    draggable={activeTool === 'select' && !obj.locked}
+                    onClick={(e: KonvaEventObject<MouseEvent>) => handleObjectClick(e, obj.id)}
+                    onDragEnd={(e: KonvaEventObject<DragEvent>) => handleObjectDragEnd(e, obj.id)}
+                    onTransformEnd={(e: KonvaEventObject<Event>) => handleTransformEnd(e, obj.id)}
+                  />
+                )
+              }
+              if (obj.type === 'arrow') {
+                const arrowObj = obj as any
+                return (
+                  <Arrow
+                    key={obj.id}
+                    id={obj.id}
+                    x={arrowObj.x}
+                    y={arrowObj.y}
+                    points={arrowObj.points}
+                    stroke={arrowObj.stroke}
+                    strokeWidth={arrowObj.strokeWidth}
+                    fill={arrowObj.stroke}
+                    pointerLength={10}
+                    pointerWidth={10}
+                    rotation={arrowObj.rotation}
+                    draggable={activeTool === 'select' && !obj.locked}
+                    onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
+                    onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
+                  />
+                )
+              }
+              return null
+            })}
+            
+            {/* Drawing Object */}
+            {drawingObject && drawingObject.type === 'rectangle' && (
+              <Rect {...drawingObject} cornerRadius={4} />
+            )}
+            {drawingObject && drawingObject.type === 'circle' && (
+              <Circle 
+                x={drawingObject.x + drawingObject.width / 2} 
+                y={drawingObject.y + drawingObject.height / 2} 
+                radius={Math.abs(Math.max(drawingObject.width, drawingObject.height) / 2)} 
+                fill={drawingObject.fill}
+                stroke={drawingObject.stroke}
+                strokeWidth={drawingObject.strokeWidth}
+              />
+            )}
+            {drawingObject && drawingObject.type === 'path' && (
+              <Line
+                points={drawingObject.points}
+                stroke={drawingObject.stroke}
+                strokeWidth={drawingObject.strokeWidth}
+                tension={drawingObject.tension}
+                lineCap="round"
+                lineJoin="round"
+                globalCompositeOperation={
+                  drawingObject.tool === 'eraser' ? 'destination-out' : 'source-over'
+                }
+              />
+            )}
+            {drawingObject && drawingObject.type === 'arrow' && (
+              <Arrow
+                points={drawingObject.points}
+                stroke={drawingObject.stroke}
+                strokeWidth={drawingObject.strokeWidth}
+                fill={drawingObject.stroke}
+                pointerLength={10}
+                pointerWidth={10}
+              />
+            )}
+            
+            <SelectionTransformer selectedIds={selectedIds} />
+          </Layer>
+        </Stage>
+      )}
+    </div>
+  )
+}
