@@ -1,11 +1,20 @@
-import React from 'react'
+import { Trash2 } from 'lucide-react'
 import { useBoardStore } from '../../store/boardStore'
 import { useUIStore } from '../../store/uiStore'
+import { BoardSettingsPanel } from './BoardSettingsPanel'
 
-export const TopBar: React.FC = () => {
+export const TopBar = () => {
+  const handleClearCanvas = () => {
+    if (window.confirm('Clear all objects from the canvas? This cannot be undone.')) {
+      const { objectIds } = useBoardStore.getState()
+      useBoardStore.getState().deleteObjects(objectIds)
+      useUIStore.getState().setSelectedIds([])
+    }
+  }
+
   const handleExportPNG = () => {
-    // We can find the canvas stage and export it
-    const stage = document.querySelector('canvas')?.closest('.konvajs-content')?.parentElement?.querySelector('canvas')
+    const canvasEls = document.querySelectorAll('.konvajs-content canvas')
+    const stage = canvasEls[0] as HTMLCanvasElement
     if (stage) {
       const dataUrl = stage.toDataURL('image/png')
       const link = document.createElement('a')
@@ -40,9 +49,9 @@ export const TopBar: React.FC = () => {
       const file = e.target.files?.[0]
       if (file) {
         const reader = new FileReader()
-        reader.onload = (e) => {
+        reader.onload = (ev) => {
           try {
-            const data = JSON.parse(e.target?.result as string)
+            const data = JSON.parse(ev.target?.result as string)
             if (data.objects && data.objectIds) {
               useBoardStore.setState({
                 objects: data.objects,
@@ -52,7 +61,7 @@ export const TopBar: React.FC = () => {
               })
               useUIStore.getState().setSelectedIds([])
             }
-          } catch (err) {
+          } catch {
             console.error('Failed to parse board file')
           }
         }
@@ -63,12 +72,47 @@ export const TopBar: React.FC = () => {
   }
 
   return (
-    <div className="h-14 border-b border-border bg-background flex items-center justify-between px-4 z-10" style={{ WebkitAppRegion: 'drag' } as any}>
-      <div className="font-semibold text-lg">Whiteboard</div>
-      <div className="flex gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        <button onClick={handleImportJSON} className="px-3 py-1.5 text-sm font-medium hover:bg-accent rounded-md transition-colors">Import JSON</button>
-        <button onClick={handleExportPNG} className="px-3 py-1.5 text-sm font-medium hover:bg-accent rounded-md transition-colors">Export PNG</button>
-        <button onClick={handleExportJSON} className="px-3 py-1.5 text-sm font-medium hover:bg-accent rounded-md transition-colors">Export JSON</button>
+    <div
+      className="h-12 border-b border-border flex items-center justify-between px-4 z-10 shrink-0"
+      style={{ background: 'var(--card)', WebkitAppRegion: 'drag' } as any}
+    >
+      {/* Logo */}
+      <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold"
+          style={{ background: 'linear-gradient(135deg, #6366f1, #3b82f6)' }}
+        >
+          W
+        </div>
+        <span className="font-semibold text-sm">Whiteboard</span>
+      </div>
+
+      {/* Right actions */}
+      <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as any}>
+        <BoardSettingsPanel />
+
+        <div className="w-px h-5 bg-border mx-1" />
+
+        <button
+          onClick={handleClearCanvas}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-50 rounded-md transition-colors"
+          title="Clear Canvas"
+        >
+          <Trash2 size={14} />
+          <span>Clear</span>
+        </button>
+
+        <div className="w-px h-5 bg-border mx-1" />
+
+        <button onClick={handleImportJSON} className="px-3 py-1.5 text-sm hover:bg-accent rounded-md transition-colors">
+          Import
+        </button>
+        <button onClick={handleExportPNG} className="px-3 py-1.5 text-sm hover:bg-accent rounded-md transition-colors">
+          PNG
+        </button>
+        <button onClick={handleExportJSON} className="px-3 py-1.5 text-sm hover:bg-accent rounded-md transition-colors">
+          JSON
+        </button>
       </div>
     </div>
   )

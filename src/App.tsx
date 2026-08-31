@@ -8,6 +8,8 @@ import { loadBoard, saveBoard } from './services/db'
 
 const DEFAULT_BOARD_ID = 'default-board-id'
 
+import { ToolOptionsBar } from './components/canvas/ToolOptionsBar'
+
 function App() {
   const setSpacePressed = useUIStore((state) => state.setSpacePressed)
   const setActiveTool = useUIStore((state) => state.setActiveTool)
@@ -117,6 +119,7 @@ function App() {
       <div className="flex-1 relative overflow-hidden">
         <Canvas />
         <LeftToolbar />
+        <ToolOptionsBar />
       </div>
     </div>
   )

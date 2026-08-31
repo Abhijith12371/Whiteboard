@@ -30,6 +30,11 @@ export const Canvas: React.FC = () => {
   const activeTool = useUIStore((state) => state.activeTool)
   const selectedIds = useUIStore((state) => state.selectedIds)
   const setSelectedIds = useUIStore((state) => state.setSelectedIds)
+  const penColor = useUIStore((state) => state.penColor)
+  const penSize = useUIStore((state) => state.penSize)
+  const eraserSize = useUIStore((state) => state.eraserSize)
+  const boardBackground = useUIStore((state) => state.boardBackground)
+  const boardColor = useUIStore((state) => state.boardColor)
   
   const setStoreScale = useBoardStore((state) => state.setScale)
   const setStorePosition = useBoardStore((state) => state.setPosition)
@@ -183,8 +188,8 @@ export const Canvas: React.FC = () => {
         width: 0,
         height: 0,
         fill: 'transparent',
-        stroke: activeTool === 'eraser' ? '#ffffff' : '#09090b', 
-        strokeWidth: activeTool === 'eraser' ? 20 : 3,
+        stroke: activeTool === 'eraser' ? '#000000' : penColor,
+        strokeWidth: activeTool === 'eraser' ? eraserSize : penSize,
         tension: 0.5,
         rotation: 0,
         opacity: 1,
@@ -381,7 +386,7 @@ export const Canvas: React.FC = () => {
     })
   }
 
-  // Grid computed from current stage transform
+  // Board background CSS
   const stageNode = stageRef.current
   const bgSize = 20 * (stageNode?.scaleX() || 1)
   const bgPos = {
@@ -389,16 +394,61 @@ export const Canvas: React.FC = () => {
     y: (stageNode?.y() || 0) % bgSize
   }
 
+  const BOARD_COLOR_MAP: Record<string, string> = {
+    white: '#ffffff',
+    cream: '#fefce8',
+    sky: '#f0f9ff',
+    mint: '#f0fdf4',
+    lavender: '#faf5ff',
+    dark: '#18181b',
+  }
+  const LINE_COLOR_MAP: Record<string, string> = {
+    white: '#e5e7eb',
+    cream: '#d9f099',
+    sky: '#bae6fd',
+    mint: '#bbf7d0',
+    lavender: '#ddd6fe',
+    dark: '#3f3f46',
+  }
+  const bgColorHex = BOARD_COLOR_MAP[boardColor] || '#ffffff'
+  const lineColor = LINE_COLOR_MAP[boardColor] || '#e5e7eb'
+  const dotColor = boardColor === 'dark' ? '#52525b' : '#d1d5db'
+
+  const getBgStyle = (): React.CSSProperties => {
+    const base: React.CSSProperties = { background: bgColorHex }
+    if (boardBackground === 'blank') return base
+    if (boardBackground === 'dots') return {
+      ...base,
+      backgroundImage: `radial-gradient(circle, ${dotColor} 1.2px, transparent 1.2px)`,
+      backgroundSize: `${bgSize}px ${bgSize}px`,
+      backgroundPosition: `${bgPos.x}px ${bgPos.y}px`,
+    }
+    const lineSpacing = 32 * (stageNode?.scaleX() || 1)
+    if (boardBackground === 'ruled') return {
+      ...base,
+      backgroundImage: `linear-gradient(transparent calc(${lineSpacing}px - 1px), ${lineColor} calc(${lineSpacing}px - 1px), ${lineColor} ${lineSpacing}px, transparent ${lineSpacing}px)`,
+      backgroundSize: `100% ${lineSpacing}px`,
+      backgroundPosition: `0 ${(stageNode?.y() || 0) % lineSpacing}px`,
+    }
+    if (boardBackground === 'grid') return {
+      ...base,
+      backgroundImage: [
+        `linear-gradient(transparent calc(${bgSize}px - 1px), ${lineColor} calc(${bgSize}px - 1px), ${lineColor} ${bgSize}px, transparent ${bgSize}px)`,
+        `linear-gradient(90deg, transparent calc(${bgSize}px - 1px), ${lineColor} calc(${bgSize}px - 1px), ${lineColor} ${bgSize}px, transparent ${bgSize}px)`,
+      ].join(','),
+      backgroundSize: `${bgSize}px ${bgSize}px`,
+      backgroundPosition: `${bgPos.x}px ${bgPos.y}px`,
+    }
+    return base
+  }
+
   return (
     <div 
       ref={containerRef} 
-      className="w-full h-full bg-muted/20 relative outline-none"
+      className="w-full h-full relative outline-none"
       style={{ 
         cursor: isPanActive ? (isMiddleClickPan ? 'grabbing' : 'grab') : (activeTool === 'select' ? 'default' : 'crosshair'),
-        backgroundImage: `radial-gradient(circle, var(--muted-foreground) 1px, transparent 1px)`,
-        backgroundSize: `${bgSize}px ${bgSize}px`,
-        backgroundPosition: `${bgPos.x}px ${bgPos.y}px`,
-        opacity: 0.8
+        ...getBgStyle()
       }}
     >
       {size.width > 0 && (
