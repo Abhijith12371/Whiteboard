@@ -19,6 +19,11 @@ interface UIState {
   boardBackground: BoardBackground;
   boardColor: BoardColor;
 
+  // Board Management
+  activeBoardId: string;
+  activeBoardName: string;
+  isHomeOpen: boolean;
+
   setActiveTool: (tool: Tool) => void;
   setSpacePressed: (pressed: boolean) => void;
   setTheme: (theme: 'light' | 'dark') => void;
@@ -28,6 +33,9 @@ interface UIState {
   setEraserSize: (size: number) => void;
   setBoardBackground: (bg: BoardBackground) => void;
   setBoardColor: (color: BoardColor) => void;
+  
+  setActiveBoard: (id: string, name: string) => void;
+  setHomeOpen: (isOpen: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -43,6 +51,10 @@ export const useUIStore = create<UIState>((set) => ({
   boardBackground: 'dots',
   boardColor: 'white',
 
+  activeBoardId: 'default-board-id',
+  activeBoardName: 'Whiteboard',
+  isHomeOpen: false,
+
   setActiveTool: (tool) => set({ activeTool: tool }),
   setSpacePressed: (pressed) => set({ isSpacePressed: pressed }),
   setTheme: (theme) => set({ theme }),
@@ -52,4 +64,7 @@ export const useUIStore = create<UIState>((set) => ({
   setEraserSize: (eraserSize) => set({ eraserSize }),
   setBoardBackground: (boardBackground) => set({ boardBackground }),
   setBoardColor: (boardColor) => set({ boardColor }),
+  
+  setActiveBoard: (id, name) => set({ activeBoardId: id, activeBoardName: name }),
+  setHomeOpen: (isOpen) => set({ isHomeOpen: isOpen }),
 }))

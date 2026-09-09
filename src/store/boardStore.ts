@@ -15,7 +15,7 @@ interface BoardState {
   setScale: (scale: number) => void;
   setPosition: (pos: { x: number; y: number }) => void;
   addObject: (obj: BaseObject) => void;
-  updateObject: (id: string, updates: Partial<BaseObject>) => void;
+  updateObject: (id: string, updates: Record<string, any>) => void;
   deleteObjects: (ids: string[]) => void;
   undo: () => void;
   redo: () => void;
@@ -44,7 +44,7 @@ export const useBoardStore = create<BoardState>((set) => ({
     }
   }),
   
-  updateObject: (id, updates) => set((state) => {
+  updateObject: (id, updates: Record<string, any>) => set((state) => {
     const newState = {
       objects: {
         ...state.objects,

@@ -1,9 +1,28 @@
-import { Trash2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Trash2, Home, Download, Upload, Image as ImageIcon } from 'lucide-react'
 import { useBoardStore } from '../../store/boardStore'
 import { useUIStore } from '../../store/uiStore'
 import { BoardSettingsPanel } from './BoardSettingsPanel'
 
 export const TopBar = () => {
+  const activeBoardId = useUIStore(s => s.activeBoardId)
+  const activeBoardName = useUIStore(s => s.activeBoardName)
+  const setActiveBoard = useUIStore(s => s.setActiveBoard)
+  const setHomeOpen = useUIStore(s => s.setHomeOpen)
+  
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleValue, setTitleValue] = useState(activeBoardName)
+
+  useEffect(() => {
+    setTitleValue(activeBoardName)
+  }, [activeBoardName])
+
+  const handleTitleSubmit = () => {
+    const newTitle = titleValue.trim() || 'Untitled Board'
+    setActiveBoard(activeBoardId, newTitle)
+    setEditingTitle(false)
+  }
+
   const handleClearCanvas = () => {
     if (window.confirm('Clear all objects from the canvas? This cannot be undone.')) {
       const { objectIds } = useBoardStore.getState()
@@ -18,7 +37,7 @@ export const TopBar = () => {
     if (stage) {
       const dataUrl = stage.toDataURL('image/png')
       const link = document.createElement('a')
-      link.download = 'whiteboard.png'
+      link.download = `${activeBoardName.replace(/\s+/g, '_')}.png`
       link.href = dataUrl
       document.body.appendChild(link)
       link.click()
@@ -33,7 +52,7 @@ export const TopBar = () => {
     const blob = new Blob([data], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.download = 'whiteboard.json'
+    link.download = `${activeBoardName.replace(/\s+/g, '_')}.json`
     link.href = url
     document.body.appendChild(link)
     link.click()
@@ -73,18 +92,38 @@ export const TopBar = () => {
 
   return (
     <div
-      className="h-12 border-b border-border flex items-center justify-between px-4 z-10 shrink-0"
+      className="h-12 border-b border-border flex items-center justify-between px-4 pr-[140px] z-10 shrink-0"
       style={{ background: 'var(--card)', WebkitAppRegion: 'drag' } as any}
     >
-      {/* Logo */}
-      <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold"
-          style={{ background: 'linear-gradient(135deg, #6366f1, #3b82f6)' }}
+      {/* Left side: Home & Title */}
+      <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
+        <button 
+          onClick={() => setHomeOpen(true)}
+          className="p-1.5 hover:bg-accent rounded-md text-muted-foreground transition-colors"
+          title="Home / All Boards"
         >
-          W
-        </div>
-        <span className="font-semibold text-sm">Whiteboard</span>
+          <Home size={18} />
+        </button>
+        
+        <div className="w-px h-5 bg-border" />
+
+        {editingTitle ? (
+          <input
+            autoFocus
+            value={titleValue}
+            onChange={e => setTitleValue(e.target.value)}
+            onBlur={handleTitleSubmit}
+            onKeyDown={e => e.key === 'Enter' && handleTitleSubmit()}
+            className="font-semibold text-sm bg-accent px-2 py-0.5 rounded outline-none border border-primary/50"
+          />
+        ) : (
+          <button 
+            onClick={() => setEditingTitle(true)}
+            className="font-semibold text-sm px-2 py-0.5 hover:bg-accent rounded outline-none text-left truncate max-w-[200px]"
+          >
+            {activeBoardName}
+          </button>
+        )}
       </div>
 
       {/* Right actions */}
@@ -104,14 +143,14 @@ export const TopBar = () => {
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        <button onClick={handleImportJSON} className="px-3 py-1.5 text-sm hover:bg-accent rounded-md transition-colors">
-          Import
+        <button onClick={handleImportJSON} className="p-1.5 hover:bg-accent rounded-md transition-colors text-muted-foreground" title="Import JSON">
+          <Upload size={16} />
         </button>
-        <button onClick={handleExportPNG} className="px-3 py-1.5 text-sm hover:bg-accent rounded-md transition-colors">
-          PNG
+        <button onClick={handleExportPNG} className="p-1.5 hover:bg-accent rounded-md transition-colors text-muted-foreground" title="Export PNG">
+          <ImageIcon size={16} />
         </button>
-        <button onClick={handleExportJSON} className="px-3 py-1.5 text-sm hover:bg-accent rounded-md transition-colors">
-          JSON
+        <button onClick={handleExportJSON} className="p-1.5 hover:bg-accent rounded-md transition-colors text-muted-foreground" title="Export JSON">
+          <Download size={16} />
         </button>
       </div>
     </div>

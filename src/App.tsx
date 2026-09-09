@@ -4,11 +4,10 @@ import { LeftToolbar } from './components/layout/LeftToolbar'
 import { Canvas } from './components/canvas/Canvas'
 import { useUIStore } from './store/uiStore'
 import { useBoardStore } from './store/boardStore'
-import { loadBoard, saveBoard } from './services/db'
-
-const DEFAULT_BOARD_ID = 'default-board-id'
+import { loadBoard, saveBoard, listBoards } from './services/db'
 
 import { ToolOptionsBar } from './components/canvas/ToolOptionsBar'
+import { HomeDashboard } from './components/layout/HomeDashboard'
 
 function App() {
   const setSpacePressed = useUIStore((state) => state.setSpacePressed)
@@ -16,6 +15,10 @@ function App() {
   // selectedIds used in keyboard handler via getState()
   const setSelectedIds = useUIStore((state) => state.setSelectedIds)
   
+  const activeBoardId = useUIStore((state) => state.activeBoardId)
+  const activeBoardName = useUIStore((state) => state.activeBoardName)
+  const setActiveBoard = useUIStore((state) => state.setActiveBoard)
+
   const undo = useBoardStore((state) => state.undo)
   const redo = useBoardStore((state) => state.redo)
   const deleteObjects = useBoardStore((state) => state.deleteObjects)
@@ -26,9 +29,30 @@ function App() {
   const [isLoaded, setIsLoaded] = useState(false)
   const [dbAvailable, setDbAvailable] = useState(true)
 
-  // Load persisted board — always resolve, even if IDB is unavailable
+  // Initial load - try to find latest board, otherwise use default
   useEffect(() => {
-    loadBoard(DEFAULT_BOARD_ID)
+    listBoards().then(boards => {
+      let targetId = 'default-board-id'
+      let targetName = 'Whiteboard'
+
+      if (boards.length > 0) {
+        const latest = boards.sort((a, b) => b.updatedAt - a.updatedAt)[0]
+        targetId = latest.id
+        targetName = latest.name
+      }
+      
+      setActiveBoard(targetId, targetName)
+    }).catch(() => {
+      setDbAvailable(false)
+      setIsLoaded(true)
+    })
+  }, []) // run once
+
+  // Load persisted board when activeBoardId changes
+  useEffect(() => {
+    if (!activeBoardId || !dbAvailable) return
+    setIsLoaded(false)
+    loadBoard(activeBoardId)
       .then(board => {
         if (board) {
           useBoardStore.setState({
@@ -40,24 +64,23 @@ function App() {
         }
       })
       .catch(() => {
-        // IndexedDB unavailable (e.g. Electron sandbox restrictions) — just start fresh
         setDbAvailable(false)
       })
       .finally(() => {
         setIsLoaded(true)
       })
-  }, [])
+  }, [activeBoardId, dbAvailable])
 
   // Auto-save (only when IDB is available)
   useEffect(() => {
     if (!isLoaded || !dbAvailable) return
     const timeoutId = setTimeout(() => {
-      saveBoard(DEFAULT_BOARD_ID, 'My Board', objects, objectIds).catch(() => {
+      saveBoard(activeBoardId, activeBoardName, objects, objectIds).catch(() => {
         setDbAvailable(false)
       })
     }, 1000)
     return () => clearTimeout(timeoutId)
-  }, [objects, objectIds, isLoaded, dbAvailable])
+  }, [objects, objectIds, isLoaded, dbAvailable, activeBoardId, activeBoardName])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -120,6 +143,7 @@ function App() {
         <Canvas />
         <LeftToolbar />
         <ToolOptionsBar />
+        <HomeDashboard />
       </div>
     </div>
   )

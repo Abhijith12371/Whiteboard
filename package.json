@@ -1,7 +1,7 @@
 {
   "name": "microsoftwhiteboardclone",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.3",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -12,13 +12,23 @@
     "pack": "electron-builder --win"
   },
   "build": {
-    "appId": "com.whiteboard.app",
+    "appId": "com.digiboard.app",
     "productName": "Whiteboard",
+    "copyright": "Copyright © 2026 Digiboard",
     "directories": {
       "output": "release"
     },
     "win": {
-      "target": ["nsis", "portable"]
+      "target": ["nsis", "portable", "appx"],
+      "icon": "build/icon.png"
+    },
+    "appx": {
+      "applicationId": "AbhijithN.Digiboard",
+      "backgroundColor": "#4f46e5",
+      "displayName": "Digiboard",
+      "identityName": "AbhijithN.Digiboard",
+      "publisher": "CN=C442DDF1-9670-4E19-B9FD-354F70E192AD",
+      "publisherDisplayName": "Abhijith_N"
     },
     "files": [
       "dist/**/*",

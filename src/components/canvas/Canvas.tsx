@@ -50,6 +50,7 @@ export const Canvas: React.FC = () => {
 
   const [isMiddleClickPan, setIsMiddleClickPan] = useState(false)
   const [drawingObject, setDrawingObject] = useState<any>(null)
+  const [editingTextId, setEditingTextId] = useState<string | null>(null)
 
   const isPanActive = isSpacePressed || activeTool === 'pan' || isMiddleClickPan
 
@@ -156,6 +157,7 @@ export const Canvas: React.FC = () => {
     if (clickedOnEmpty) {
       setSelectedIds([])
     }
+    setEditingTextId(null)
 
     const pos = getRelativePointerPosition(stage)
     if (!pos) return
@@ -260,10 +262,19 @@ export const Canvas: React.FC = () => {
         height: pos.y - drawingObject.y,
       })
     } else if (drawingObject.type === 'path') {
-      setDrawingObject({
-        ...drawingObject,
-        points: [...drawingObject.points, pos.x, pos.y]
-      })
+      const points = drawingObject.points
+      const lastX = points[points.length - 2]
+      const lastY = points[points.length - 1]
+      
+      const dx = pos.x - lastX
+      const dy = pos.y - lastY
+      
+      if (dx * dx + dy * dy > 9) {
+        setDrawingObject({
+          ...drawingObject,
+          points: [...points, pos.x, pos.y]
+        })
+      }
     } else if (drawingObject.type === 'arrow') {
       setDrawingObject({
         ...drawingObject,
@@ -276,10 +287,15 @@ export const Canvas: React.FC = () => {
     if (!drawingObject) return
 
     if (drawingObject.type === 'path') {
-      if (drawingObject.points.length > 2) {
+      let finalPoints = drawingObject.points;
+      if (finalPoints.length === 2) {
+        finalPoints = [...finalPoints, finalPoints[0], finalPoints[1]];
+      }
+      
+      if (finalPoints.length > 2) {
         // Calculate actual bounding box for selection/transform later
-        const xs = drawingObject.points.filter((_: number, i: number) => i % 2 === 0)
-        const ys = drawingObject.points.filter((_: number, i: number) => i % 2 !== 0)
+        const xs = finalPoints.filter((_: number, i: number) => i % 2 === 0)
+        const ys = finalPoints.filter((_: number, i: number) => i % 2 !== 0)
         const minX = Math.min(...xs)
         const maxX = Math.max(...xs)
         const minY = Math.min(...ys)
@@ -289,10 +305,10 @@ export const Canvas: React.FC = () => {
           ...drawingObject,
           x: minX,
           y: minY,
-          width: maxX - minX,
+          width: Math.max(5, maxX - minX),
           height: Math.max(5, maxY - minY),
           // Convert global points to local points relative to x,y
-          points: drawingObject.points.map((val: number, i: number) => i % 2 === 0 ? val - minX : val - minY)
+          points: finalPoints.map((val: number, i: number) => i % 2 === 0 ? val - minX : val - minY)
         }
         
         useBoardStore.getState().addObject(finalObj)
@@ -342,6 +358,16 @@ export const Canvas: React.FC = () => {
     }
     
     setDrawingObject(null)
+  }
+
+  const handleObjectDblClick = (e: KonvaEventObject<MouseEvent>, id: string) => {
+    if (activeTool !== 'select') return
+    e.cancelBubble = true
+    
+    const obj = useBoardStore.getState().objects[id]
+    if (obj && (obj.type === 'text' || obj.type === 'sticky')) {
+      setEditingTextId(id)
+    }
   }
 
   const handleObjectClick = (e: KonvaEventObject<MouseEvent>, id: string) => {
@@ -536,6 +562,7 @@ export const Canvas: React.FC = () => {
                     width={textObj.width}
                     height={textObj.height}
                     text={textObj.text}
+                    opacity={editingTextId === obj.id ? 0 : textObj.opacity}
                     fontSize={textObj.fontSize}
                     fontFamily={textObj.fontFamily}
                     fill={textObj.fill}
@@ -544,6 +571,7 @@ export const Canvas: React.FC = () => {
                     rotation={textObj.rotation}
                     draggable={activeTool === 'select' && !obj.locked}
                     onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDblClick={(e) => handleObjectDblClick(e, obj.id)}
                     onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
                     onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
                   />
@@ -562,6 +590,7 @@ export const Canvas: React.FC = () => {
                     rotation={stickyObj.rotation}
                     draggable={activeTool === 'select' && !obj.locked}
                     onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDblClick={(e) => handleObjectDblClick(e, obj.id)}
                     onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
                     onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
                   >
@@ -579,6 +608,7 @@ export const Canvas: React.FC = () => {
                       width={stickyObj.width}
                       height={stickyObj.height}
                       text={stickyObj.text}
+                      opacity={editingTextId === obj.id ? 0 : 1}
                       fontSize={stickyObj.fontSize}
                       fontFamily={stickyObj.fontFamily}
                       fill={stickyObj.fill}
@@ -676,6 +706,63 @@ export const Canvas: React.FC = () => {
           </Layer>
         </Stage>
       )}
+
+      {/* HTML Overlay for Text Editing */}
+      {editingTextId && (() => {
+        const obj = boardObjects.find(o => o.id === editingTextId) as any
+        if (!obj) return null
+        
+        const stage = stageRef.current
+        if (!stage) return null
+        
+        const scale = stage.scaleX()
+        const node = stage.findOne(`#${obj.id}`)
+        if (!node) return null
+        
+        const textNode = (obj.type === 'sticky' ? (node as Konva.Group).findOne('Text') : node) as Konva.Text
+        if (!textNode) return null
+        
+        const absolutePos = textNode.absolutePosition()
+        
+        const style: React.CSSProperties = {
+          position: 'absolute',
+          top: absolutePos.y + 'px',
+          left: absolutePos.x + 'px',
+          width: textNode.width() * scale * node.scaleX() + 'px',
+          height: textNode.height() * scale * node.scaleY() + 'px',
+          fontSize: textNode.fontSize() * scale * node.scaleY() + 'px',
+          fontFamily: textNode.fontFamily(),
+          fontStyle: textNode.fontStyle(),
+          fontWeight: obj.fontWeight || 'normal',
+          color: String(textNode.fill()),
+          padding: obj.type === 'sticky' ? `${10 * scale}px` : '0px',
+          margin: 0,
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          resize: 'none',
+          overflow: 'hidden',
+          lineHeight: String(textNode.lineHeight()),
+          textAlign: textNode.align() as any,
+          transformOrigin: 'top left',
+          transform: `rotate(${node.rotation()}deg)`,
+          zIndex: 1000,
+        }
+        
+        return (
+          <textarea
+            value={obj.text}
+            onChange={(e) => updateObject(editingTextId, { text: e.target.value })}
+            onBlur={() => setEditingTextId(null)}
+            autoFocus
+            style={style}
+            onKeyDown={(e) => {
+              e.stopPropagation()
+            }}
+          />
+        )
+      })()}
     </div>
   )
 }
+
