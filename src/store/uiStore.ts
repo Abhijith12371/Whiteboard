@@ -23,6 +23,8 @@ interface UIState {
   activeBoardId: string;
   activeBoardName: string;
   isHomeOpen: boolean;
+  isLayersPanelOpen: boolean;
+  clipboard: any[];
 
   setActiveTool: (tool: Tool) => void;
   setSpacePressed: (pressed: boolean) => void;
@@ -36,6 +38,8 @@ interface UIState {
   
   setActiveBoard: (id: string, name: string) => void;
   setHomeOpen: (isOpen: boolean) => void;
+  setLayersPanelOpen: (isOpen: boolean) => void;
+  setClipboard: (clipboard: any[]) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -54,6 +58,8 @@ export const useUIStore = create<UIState>((set) => ({
   activeBoardId: 'default-board-id',
   activeBoardName: 'Whiteboard',
   isHomeOpen: false,
+  isLayersPanelOpen: false,
+  clipboard: [],
 
   setActiveTool: (tool) => set({ activeTool: tool }),
   setSpacePressed: (pressed) => set({ isSpacePressed: pressed }),
@@ -67,4 +73,6 @@ export const useUIStore = create<UIState>((set) => ({
   
   setActiveBoard: (id, name) => set({ activeBoardId: id, activeBoardName: name }),
   setHomeOpen: (isOpen) => set({ isHomeOpen: isOpen }),
+  setLayersPanelOpen: (isOpen) => set({ isLayersPanelOpen: isOpen }),
+  setClipboard: (clipboard) => set({ clipboard }),
 }))

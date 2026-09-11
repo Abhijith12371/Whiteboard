@@ -17,6 +17,12 @@ interface BoardState {
   addObject: (obj: BaseObject) => void;
   updateObject: (id: string, updates: Record<string, any>) => void;
   deleteObjects: (ids: string[]) => void;
+  duplicateObjects: (ids: string[]) => void;
+  groupObjects: (ids: string[]) => void;
+  ungroupObjects: (id: string) => void;
+  reorderObject: (id: string, direction: 'up' | 'down' | 'front' | 'back') => void;
+  toggleLock: (ids: string[]) => void;
+  toggleVisibility: (ids: string[]) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -65,6 +71,143 @@ export const useBoardStore = create<BoardState>((set) => ({
     return {
       objects: newObjects,
       objectIds: newObjectIds,
+      past: [...state.past, { objects: state.objects, objectIds: state.objectIds }],
+      future: []
+    }
+  }),
+
+  duplicateObjects: (ids) => set((state) => {
+    const newObjects = { ...state.objects }
+    const newIds = [...state.objectIds]
+    ids.forEach(id => {
+      const obj = state.objects[id]
+      if (obj) {
+        const newId = crypto.randomUUID()
+        newObjects[newId] = { ...obj, id: newId, x: obj.x + 20, y: obj.y + 20 }
+        newIds.push(newId)
+      }
+    })
+    return {
+      objects: newObjects,
+      objectIds: newIds,
+      past: [...state.past, { objects: state.objects, objectIds: state.objectIds }],
+      future: []
+    }
+  }),
+
+  groupObjects: (ids) => set((state) => {
+    if (ids.length < 2) return state;
+    const newObjects = { ...state.objects }
+    const newIds = [...state.objectIds]
+    const groupId = crypto.randomUUID()
+    
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    ids.forEach(id => {
+      const obj = state.objects[id]
+      if (obj) {
+        newObjects[id] = { ...obj, groupId }
+        minX = Math.min(minX, obj.x)
+        minY = Math.min(minY, obj.y)
+        maxX = Math.max(maxX, obj.x + (obj.width || 0))
+        maxY = Math.max(maxY, obj.y + (obj.height || 0))
+      }
+    })
+
+    const groupObj: BaseObject = {
+      id: groupId,
+      type: 'group' as any,
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      rotation: 0,
+      opacity: 1,
+      locked: false,
+      zIndex: 0,
+      childIds: ids
+    } as any
+    
+    newObjects[groupId] = groupObj
+    newIds.push(groupId)
+
+    return {
+      objects: newObjects,
+      objectIds: newIds,
+      past: [...state.past, { objects: state.objects, objectIds: state.objectIds }],
+      future: []
+    }
+  }),
+
+  ungroupObjects: (id) => set((state) => {
+    const groupObj = state.objects[id] as any
+    if (!groupObj || groupObj.type !== 'group') return state;
+    
+    const newObjects = { ...state.objects }
+    const newIds = state.objectIds.filter(i => i !== id)
+    
+    delete newObjects[id]
+    
+    groupObj.childIds.forEach((childId: string) => {
+      if (newObjects[childId]) {
+        const { groupId, ...rest } = newObjects[childId] as any
+        newObjects[childId] = rest
+      }
+    })
+
+    return {
+      objects: newObjects,
+      objectIds: newIds,
+      past: [...state.past, { objects: state.objects, objectIds: state.objectIds }],
+      future: []
+    }
+  }),
+
+  reorderObject: (id, direction) => set((state) => {
+    const newIds = [...state.objectIds]
+    const index = newIds.indexOf(id)
+    if (index === -1) return state;
+    
+    newIds.splice(index, 1)
+    if (direction === 'up') {
+      newIds.splice(Math.min(newIds.length, index + 1), 0, id)
+    } else if (direction === 'down') {
+      newIds.splice(Math.max(0, index - 1), 0, id)
+    } else if (direction === 'front') {
+      newIds.push(id)
+    } else if (direction === 'back') {
+      newIds.unshift(id)
+    }
+    
+    return {
+      objectIds: newIds,
+      past: [...state.past, { objects: state.objects, objectIds: state.objectIds }],
+      future: []
+    }
+  }),
+
+  toggleLock: (ids) => set((state) => {
+    const newObjects = { ...state.objects }
+    ids.forEach(id => {
+      if (newObjects[id]) {
+        newObjects[id] = { ...newObjects[id], locked: !newObjects[id].locked }
+      }
+    })
+    return {
+      objects: newObjects,
+      past: [...state.past, { objects: state.objects, objectIds: state.objectIds }],
+      future: []
+    }
+  }),
+
+  toggleVisibility: (ids) => set((state) => {
+    const newObjects = { ...state.objects }
+    ids.forEach(id => {
+      if (newObjects[id]) {
+        newObjects[id] = { ...newObjects[id], hidden: !newObjects[id].hidden }
+      }
+    })
+    return {
+      objects: newObjects,
       past: [...state.past, { objects: state.objects, objectIds: state.objectIds }],
       future: []
     }

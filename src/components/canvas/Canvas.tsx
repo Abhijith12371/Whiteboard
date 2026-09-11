@@ -5,6 +5,7 @@ import { useBoardStore } from '../../store/boardStore'
 import Konva from 'konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import { SelectionTransformer } from './SelectionTransformer'
+import { ContextMenu } from './ContextMenu'
 
 const URLImage = (props: any) => {
   const [image, setImage] = useState<HTMLImageElement | null>(null)
@@ -51,6 +52,9 @@ export const Canvas: React.FC = () => {
   const [isMiddleClickPan, setIsMiddleClickPan] = useState(false)
   const [drawingObject, setDrawingObject] = useState<any>(null)
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
+  const [selectionRect, setSelectionRect] = useState<{ x: number, y: number, width: number, height: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number } | null>(null)
+  const [snapLines, setSnapLines] = useState<{ x?: number, y?: number }[]>([])
 
   const isPanActive = isSpacePressed || activeTool === 'pan' || isMiddleClickPan
 
@@ -154,13 +158,16 @@ export const Canvas: React.FC = () => {
 
     const clickedOnEmpty = e.target === stage
 
-    if (clickedOnEmpty) {
-      setSelectedIds([])
-    }
-    setEditingTextId(null)
-
     const pos = getRelativePointerPosition(stage)
     if (!pos) return
+
+    if (clickedOnEmpty) {
+      setSelectedIds([])
+      if (activeTool === 'select') {
+        setSelectionRect({ x: pos.x, y: pos.y, width: 0, height: 0 })
+      }
+    }
+    setEditingTextId(null)
 
     if (activeTool === 'rectangle' || activeTool === 'circle') {
       setSelectedIds([])
@@ -172,7 +179,41 @@ export const Canvas: React.FC = () => {
         width: 0,
         height: 0,
         fill: 'transparent',
-        stroke: '#09090b', // Foreground color approx
+        stroke: '#09090b',
+        strokeWidth: 2,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        zIndex: 0
+      })
+    } else if (activeTool === 'triangle') {
+      setSelectedIds([])
+      setDrawingObject({
+        id: crypto.randomUUID(),
+        type: 'triangle',
+        x: pos.x,
+        y: pos.y,
+        width: 0,
+        height: 0,
+        fill: 'transparent',
+        stroke: '#09090b',
+        strokeWidth: 2,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        zIndex: 0
+      })
+    } else if (activeTool === 'line') {
+      setSelectedIds([])
+      setDrawingObject({
+        id: crypto.randomUUID(),
+        type: 'line',
+        x: 0,
+        y: 0,
+        points: [pos.x, pos.y, pos.x, pos.y],
+        width: 0,
+        height: 0,
+        stroke: '#09090b',
         strokeWidth: 2,
         rotation: 0,
         opacity: 1,
@@ -247,13 +288,22 @@ export const Canvas: React.FC = () => {
   }
 
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
-    if (!drawingObject) return
-
     const stage = e.target.getStage()
     if (!stage) return
 
     const pos = getRelativePointerPosition(stage)
     if (!pos) return
+
+    if (selectionRect && activeTool === 'select') {
+      setSelectionRect({
+        ...selectionRect,
+        width: pos.x - selectionRect.x,
+        height: pos.y - selectionRect.y
+      })
+      return
+    }
+
+    if (!drawingObject) return
 
     if (drawingObject.type === 'rectangle' || drawingObject.type === 'circle') {
       setDrawingObject({
@@ -280,10 +330,51 @@ export const Canvas: React.FC = () => {
         ...drawingObject,
         points: [drawingObject.points[0], drawingObject.points[1], pos.x, pos.y]
       })
+    } else if (drawingObject.type === 'triangle') {
+      setDrawingObject({
+        ...drawingObject,
+        width: pos.x - drawingObject.x,
+        height: pos.y - drawingObject.y,
+      })
+    } else if (drawingObject.type === 'line') {
+      setDrawingObject({
+        ...drawingObject,
+        points: [drawingObject.points[0], drawingObject.points[1], pos.x, pos.y]
+      })
     }
   }
 
   const handleMouseUp = (_e: KonvaEventObject<MouseEvent>) => {
+    if (selectionRect && activeTool === 'select') {
+      const box = {
+        x: Math.min(selectionRect.x, selectionRect.x + selectionRect.width),
+        y: Math.min(selectionRect.y, selectionRect.y + selectionRect.height),
+        width: Math.abs(selectionRect.width),
+        height: Math.abs(selectionRect.height)
+      }
+      
+      if (box.width > 5 || box.height > 5) {
+        const newSelectedIds = boardObjects.filter((obj: any) => {
+          const objBox = {
+            x: obj.x,
+            y: obj.y,
+            width: obj.width || 0,
+            height: obj.height || 0
+          }
+          return (
+            box.x < objBox.x + objBox.width &&
+            box.x + box.width > objBox.x &&
+            box.y < objBox.y + objBox.height &&
+            box.y + box.height > objBox.y &&
+            !obj.locked && !obj.hidden
+          )
+        }).map(o => o.id)
+        setSelectedIds(newSelectedIds)
+      }
+      setSelectionRect(null)
+      return
+    }
+
     if (!drawingObject) return
 
     if (drawingObject.type === 'path') {
@@ -324,6 +415,33 @@ export const Canvas: React.FC = () => {
         const maxY = Math.max(drawingObject.points[1], drawingObject.points[3])
 
         let finalObj = {
+          ...drawingObject,
+          x: minX,
+          y: minY,
+          width: Math.max(5, maxX - minX),
+          height: Math.max(5, maxY - minY),
+          points: [
+            drawingObject.points[0] - minX,
+            drawingObject.points[1] - minY,
+            drawingObject.points[2] - minX,
+            drawingObject.points[3] - minY
+          ]
+        }
+        useBoardStore.getState().addObject(finalObj)
+        setSelectedIds([finalObj.id])
+        useUIStore.getState().setActiveTool('select')
+      }
+    } else if (drawingObject.type === 'line') {
+      const dx = drawingObject.points[2] - drawingObject.points[0]
+      const dy = drawingObject.points[3] - drawingObject.points[1]
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist > 5) {
+        const minX = Math.min(drawingObject.points[0], drawingObject.points[2])
+        const maxX = Math.max(drawingObject.points[0], drawingObject.points[2])
+        const minY = Math.min(drawingObject.points[1], drawingObject.points[3])
+        const maxY = Math.max(drawingObject.points[1], drawingObject.points[3])
+
+        const finalObj = {
           ...drawingObject,
           x: minX,
           y: minY,
@@ -385,7 +503,34 @@ export const Canvas: React.FC = () => {
     }
   }
 
+  const handleObjectDragMove = (e: KonvaEventObject<DragEvent>, id: string) => {
+    const node = e.target
+    const SNAP_DIST = 5
+    const guideLines: { x?: number, y?: number }[] = []
+    
+    let snappedX = false
+    let snappedY = false
+    let newX = node.x()
+    let newY = node.y()
+
+    for (const obj of boardObjects) {
+      if (obj.id === id || obj.hidden) continue
+      
+      if (!snappedX && Math.abs(node.x() - obj.x) < SNAP_DIST) {
+        newX = obj.x; snappedX = true; guideLines.push({ x: obj.x })
+      }
+      
+      if (!snappedY && Math.abs(node.y() - obj.y) < SNAP_DIST) {
+        newY = obj.y; snappedY = true; guideLines.push({ y: obj.y })
+      }
+    }
+
+    node.position({ x: newX, y: newY })
+    setSnapLines(guideLines)
+  }
+
   const handleObjectDragEnd = (e: KonvaEventObject<DragEvent>, id: string) => {
+    setSnapLines([])
     updateObject(id, {
       x: e.target.x(),
       y: e.target.y()
@@ -468,10 +613,16 @@ export const Canvas: React.FC = () => {
     return base
   }
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY })
+  }
+
   return (
     <div 
       ref={containerRef} 
       className="w-full h-full relative outline-none"
+      onContextMenu={handleContextMenu}
       style={{ 
         cursor: isPanActive ? (isMiddleClickPan ? 'grabbing' : 'grab') : (activeTool === 'select' ? 'default' : 'crosshair'),
         ...getBgStyle()
@@ -491,6 +642,7 @@ export const Canvas: React.FC = () => {
         >
           <Layer>
             {boardObjects.map((obj) => {
+              if (obj.hidden) return null
               if (obj.type === 'rectangle') {
                 const rectObj = obj as any
                 return (
@@ -501,6 +653,7 @@ export const Canvas: React.FC = () => {
                     cornerRadius={4}
                     draggable={activeTool === 'select' && !obj.locked}
                     onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragMove={(e) => handleObjectDragMove(e, obj.id)}
                     onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
                     onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
                   />
@@ -521,6 +674,7 @@ export const Canvas: React.FC = () => {
                     rotation={circObj.rotation}
                     draggable={activeTool === 'select' && !obj.locked}
                     onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragMove={(e) => handleObjectDragMove(e, obj.id)}
                     onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
                     onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
                   />
@@ -546,6 +700,7 @@ export const Canvas: React.FC = () => {
                     rotation={pathObj.rotation}
                     draggable={activeTool === 'select' && !obj.locked}
                     onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragMove={(e) => handleObjectDragMove(e, obj.id)}
                     onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
                     onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
                   />
@@ -572,6 +727,7 @@ export const Canvas: React.FC = () => {
                     draggable={activeTool === 'select' && !obj.locked}
                     onClick={(e) => handleObjectClick(e, obj.id)}
                     onDblClick={(e) => handleObjectDblClick(e, obj.id)}
+                    onDragMove={(e) => handleObjectDragMove(e, obj.id)}
                     onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
                     onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
                   />
@@ -591,6 +747,7 @@ export const Canvas: React.FC = () => {
                     draggable={activeTool === 'select' && !obj.locked}
                     onClick={(e) => handleObjectClick(e, obj.id)}
                     onDblClick={(e) => handleObjectDblClick(e, obj.id)}
+                    onDragMove={(e) => handleObjectDragMove(e, obj.id)}
                     onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
                     onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
                   >
@@ -634,6 +791,7 @@ export const Canvas: React.FC = () => {
                     rotation={imgObj.rotation}
                     draggable={activeTool === 'select' && !obj.locked}
                     onClick={(e: KonvaEventObject<MouseEvent>) => handleObjectClick(e, obj.id)}
+                    onDragMove={(e: KonvaEventObject<DragEvent>) => handleObjectDragMove(e, obj.id)}
                     onDragEnd={(e: KonvaEventObject<DragEvent>) => handleObjectDragEnd(e, obj.id)}
                     onTransformEnd={(e: KonvaEventObject<Event>) => handleTransformEnd(e, obj.id)}
                   />
@@ -656,6 +814,54 @@ export const Canvas: React.FC = () => {
                     rotation={arrowObj.rotation}
                     draggable={activeTool === 'select' && !obj.locked}
                     onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragMove={(e) => handleObjectDragMove(e, obj.id)}
+                    onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
+                    onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
+                  />
+                )
+              }
+              if ((obj.type as string) === 'triangle') {
+                const triObj = obj as any
+                const w = triObj.width
+                const h = triObj.height
+                return (
+                  <Line
+                    key={obj.id}
+                    id={obj.id}
+                    x={triObj.x}
+                    y={triObj.y}
+                    points={[w / 2, 0, w, h, 0, h]}
+                    closed
+                    fill={triObj.fill}
+                    stroke={triObj.stroke}
+                    strokeWidth={triObj.strokeWidth}
+                    rotation={triObj.rotation}
+                    opacity={triObj.opacity}
+                    draggable={activeTool === 'select' && !obj.locked}
+                    onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragMove={(e) => handleObjectDragMove(e, obj.id)}
+                    onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
+                    onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
+                  />
+                )
+              }
+              if ((obj.type as string) === 'line') {
+                const lineObj = obj as any
+                return (
+                  <Line
+                    key={obj.id}
+                    id={obj.id}
+                    x={lineObj.x}
+                    y={lineObj.y}
+                    points={lineObj.points}
+                    stroke={lineObj.stroke}
+                    strokeWidth={lineObj.strokeWidth}
+                    lineCap="round"
+                    rotation={lineObj.rotation}
+                    opacity={lineObj.opacity}
+                    draggable={activeTool === 'select' && !obj.locked}
+                    onClick={(e) => handleObjectClick(e, obj.id)}
+                    onDragMove={(e) => handleObjectDragMove(e, obj.id)}
                     onDragEnd={(e) => handleObjectDragEnd(e, obj.id)}
                     onTransformEnd={(e) => handleTransformEnd(e, obj.id)}
                   />
@@ -699,6 +905,49 @@ export const Canvas: React.FC = () => {
                 fill={drawingObject.stroke}
                 pointerLength={10}
                 pointerWidth={10}
+              />
+            )}
+            {drawingObject && drawingObject.type === 'triangle' && (() => {
+              const w = drawingObject.width
+              const h = drawingObject.height
+              return (
+                <Line
+                  points={[w / 2, 0, w, h, 0, h]}
+                  x={drawingObject.x}
+                  y={drawingObject.y}
+                  closed
+                  fill={drawingObject.fill}
+                  stroke={drawingObject.stroke}
+                  strokeWidth={drawingObject.strokeWidth}
+                />
+              )
+            })()}
+            {drawingObject && drawingObject.type === 'line' && (
+              <Line
+                points={drawingObject.points}
+                stroke={drawingObject.stroke}
+                strokeWidth={drawingObject.strokeWidth}
+                lineCap="round"
+              />
+            )}
+            
+            {snapLines.map((line, i) => (
+              line.x !== undefined ? (
+                <Line key={`snap-x-${i}`} points={[line.x, -9999, line.x, 9999]} stroke="#0ea5e9" strokeWidth={1 / (stageRef.current?.scaleX() || 1)} dash={[4, 4]} />
+              ) : (
+                <Line key={`snap-y-${i}`} points={[-9999, line.y!, 9999, line.y!]} stroke="#0ea5e9" strokeWidth={1 / (stageRef.current?.scaleX() || 1)} dash={[4, 4]} />
+              )
+            ))}
+
+            {selectionRect && (
+              <Rect
+                x={selectionRect.x}
+                y={selectionRect.y}
+                width={selectionRect.width}
+                height={selectionRect.height}
+                fill="rgba(14, 165, 233, 0.1)"
+                stroke="#0ea5e9"
+                strokeWidth={1 / (stageRef.current?.scaleX() || 1)}
               />
             )}
             
@@ -762,6 +1011,14 @@ export const Canvas: React.FC = () => {
           />
         )
       })()}
+
+      {contextMenu && (
+        <ContextMenu 
+          x={contextMenu.x} 
+          y={contextMenu.y} 
+          onClose={() => setContextMenu(null)} 
+        />
+      )}
     </div>
   )
 }

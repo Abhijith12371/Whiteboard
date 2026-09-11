@@ -1,4 +1,4 @@
-export type ObjectType = 'rectangle' | 'ellipse' | 'text' | 'sticky' | 'path' | 'image' | 'arrow'
+export type ObjectType = 'rectangle' | 'ellipse' | 'text' | 'sticky' | 'path' | 'image' | 'arrow' | 'group' | 'triangle' | 'line'
 
 export interface BaseObject {
   id: string
@@ -11,6 +11,13 @@ export interface BaseObject {
   opacity: number
   locked: boolean
   zIndex: number
+  groupId?: string
+  hidden?: boolean
+}
+
+export interface GroupObject extends BaseObject {
+  type: 'group'
+  childIds: string[]
 }
 
 export interface RectangleObject extends BaseObject {
@@ -62,6 +69,20 @@ export interface ImageObject extends BaseObject {
 
 export interface ArrowObject extends BaseObject {
   type: 'arrow'
+  points: number[]
+  stroke: string
+  strokeWidth: number
+}
+
+export interface TriangleObject extends BaseObject {
+  type: 'triangle'
+  fill: string
+  stroke: string
+  strokeWidth: number
+}
+
+export interface LineObject extends BaseObject {
+  type: 'line'
   points: number[]
   stroke: string
   strokeWidth: number

@@ -8,6 +8,7 @@ import { loadBoard, saveBoard, listBoards } from './services/db'
 
 import { ToolOptionsBar } from './components/canvas/ToolOptionsBar'
 import { HomeDashboard } from './components/layout/HomeDashboard'
+import { LayersPanel } from './components/layout/LayersPanel'
 
 function App() {
   const setSpacePressed = useUIStore((state) => state.setSpacePressed)
@@ -94,6 +95,46 @@ function App() {
         if (e.key === 'z') {
           if (e.shiftKey) redo()
           else undo()
+        } else if (e.key === 'c') {
+          const state = useUIStore.getState()
+          const boardState = useBoardStore.getState()
+          if (state.selectedIds.length > 0) {
+            const copiedObjects = state.selectedIds.map(id => boardState.objects[id]).filter(Boolean)
+            state.setClipboard(copiedObjects)
+          }
+        } else if (e.key === 'v') {
+          const state = useUIStore.getState()
+          const boardState = useBoardStore.getState()
+          if (state.clipboard.length > 0) {
+            const newIds: string[] = []
+            state.clipboard.forEach(obj => {
+              const newId = crypto.randomUUID()
+              newIds.push(newId)
+              boardState.addObject({ ...obj, id: newId, x: obj.x + 20, y: obj.y + 20 } as any)
+            })
+            state.setSelectedIds(newIds)
+          }
+        } else if (e.key === 'd') {
+          e.preventDefault()
+          const state = useUIStore.getState()
+          const boardState = useBoardStore.getState()
+          if (state.selectedIds.length > 0) {
+            boardState.duplicateObjects(state.selectedIds)
+          }
+        } else if (e.key === 'g') {
+          e.preventDefault()
+          const state = useUIStore.getState()
+          const boardState = useBoardStore.getState()
+          if (e.shiftKey) {
+            if (state.selectedIds.length === 1) {
+              boardState.ungroupObjects(state.selectedIds[0])
+            }
+          } else {
+            if (state.selectedIds.length > 1) {
+              boardState.groupObjects(state.selectedIds)
+              state.setSelectedIds([])
+            }
+          }
         }
       }
 
@@ -116,6 +157,10 @@ function App() {
           case 't': setActiveTool('text'); break;
           case 'n': setActiveTool('sticky'); break;
           case 'r': setActiveTool('rectangle'); break;
+          case 'l': 
+            const uiState = useUIStore.getState();
+            uiState.setLayersPanelOpen(!uiState.isLayersPanelOpen);
+            break;
         }
       }
     }
@@ -142,6 +187,7 @@ function App() {
       <div className="flex-1 relative overflow-hidden">
         <Canvas />
         <LeftToolbar />
+        <LayersPanel />
         <ToolOptionsBar />
         <HomeDashboard />
       </div>
