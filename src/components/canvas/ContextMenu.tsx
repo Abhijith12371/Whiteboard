@@ -1,7 +1,12 @@
 import React, { useEffect, useRef } from 'react'
 import { useUIStore } from '../../store/uiStore'
 import { useBoardStore } from '../../store/boardStore'
-import { Scissors, Copy, ClipboardPaste, CopyPlus, Trash2, Group as GroupIcon, Ungroup as UngroupIcon, Lock, Unlock, BringToFront, SendToBack } from 'lucide-react'
+import {
+  Scissors, Copy, ClipboardPaste, CopyPlus, Trash2, Group as GroupIcon, Ungroup as UngroupIcon,
+  Lock, Unlock, BringToFront, SendToBack, Type, StickyNote, Shapes, Smile, Image as ImageIcon,
+} from 'lucide-react'
+import { insertStickyAt, insertTextAt } from '../../lib/insertAssets'
+import { pasteClipboard, fitToScreen } from '../../lib/workspaceActions'
 
 interface ContextMenuProps {
   x: number
@@ -148,21 +153,49 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose }) => {
         </>
       ) : (
         <>
-          <MenuItem 
-            icon={<ClipboardPaste size={16} />} 
-            label="Paste" 
+          <MenuItem
+            icon={<ClipboardPaste size={16} />}
+            label="Paste"
             shortcut="Ctrl+V"
             disabled={!hasClipboard}
+            onClick={() => handleAction(() => pasteClipboard())}
+          />
+          <div className="h-px bg-border my-1" />
+          <MenuItem icon={<Type size={16} />} label="Add Text" onClick={() => handleAction(() => insertTextAt('Text'))} />
+          <MenuItem icon={<StickyNote size={16} />} label="Add Sticky Note" onClick={() => handleAction(() => insertStickyAt())} />
+          <MenuItem
+            icon={<Shapes size={16} />}
+            label="Add Shape"
+            onClick={() => handleAction(() => useUIStore.getState().setLibraryPanel('shapes'))}
+          />
+          <MenuItem
+            icon={<Smile size={16} />}
+            label="Add Icon"
+            onClick={() => handleAction(() => useUIStore.getState().setLibraryPanel('icons'))}
+          />
+          <MenuItem
+            icon={<StickyNote size={16} />}
+            label="Add Sticker"
+            onClick={() => handleAction(() => useUIStore.getState().setLibraryPanel('stickers'))}
+          />
+          <MenuItem
+            icon={<ImageIcon size={16} />}
+            label="Add Image"
+            onClick={() => handleAction(() => document.getElementById('image-upload')?.click())}
+          />
+          <div className="h-px bg-border my-1" />
+          <MenuItem
+            icon={<CopyPlus size={16} />}
+            label="Create Page"
             onClick={() => handleAction(() => {
-              if (!hasClipboard) return
-              const newIds: string[] = []
-              clipboard.forEach(obj => {
-                const newId = crypto.randomUUID()
-                newIds.push(newId)
-                addObject({ ...obj, id: newId, x: obj.x + 20, y: obj.y + 20 } as any)
-              })
-              setSelectedIds(newIds)
-            })} 
+              useBoardStore.getState().addPage()
+              useUIStore.getState().setRightPanel('pages')
+            })}
+          />
+          <MenuItem
+            icon={<ClipboardPaste size={16} />}
+            label="Fit to Screen"
+            onClick={() => handleAction(() => fitToScreen())}
           />
         </>
       )}

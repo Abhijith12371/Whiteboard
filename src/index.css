@@ -8,6 +8,7 @@
   --popover: #ffffff;
   --popover-foreground: #09090b;
   --border: #e4e4e7;
+  --border-accent: #3b82f6;
   --input: #e4e4e7;
   --card: #ffffff;
   --card-foreground: #09090b;
@@ -21,6 +22,30 @@
   --destructive-foreground: #fafafa;
   --ring: #18181b;
   --radius: 0.5rem;
+  --surface-1: #fafafa;
+  --surface-2: #ffffff;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --text-secondary: #52525b;
+  /* Canvas surface + auto ink. Independent of all stroke colours.
+     Kept in sync with src/lib/colors.ts (CANVAS_BG / AUTO_INK). */
+  --canvas-bg: #ffffff;
+  --auto-ink: #09090b;
+
+  /* Semantic status colours */
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+  --success-muted: #dcfce7;
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --warning-muted: #fef3c7;
+  --danger: #dc2626;
+  --danger-foreground: #ffffff;
+  --danger-muted: #fee2e2;
+  --info: #2563eb;
+  --info-foreground: #ffffff;
+  --info-muted: #dbeafe;
+  /* Modal backdrop: stays dark in both themes so it always dims content. */
+  --scrim: #000000;
 }
 
 .dark {
@@ -31,6 +56,7 @@
   --popover: #09090b;
   --popover-foreground: #fafafa;
   --border: #27272a;
+  --border-accent: #60a5fa;
   --input: #27272a;
   --card: #09090b;
   --card-foreground: #fafafa;
@@ -43,6 +69,29 @@
   --destructive: #7f1d1d;
   --destructive-foreground: #fafafa;
   --ring: #a1a1aa;
+  --surface-1: #18181b;
+  --surface-2: #09090b;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --text-secondary: #a1a1aa;
+  /* Canvas surface + auto ink. Independent of all stroke colours.
+     Kept in sync with src/lib/colors.ts (CANVAS_BG / AUTO_INK). */
+  --canvas-bg: #000000;
+  --auto-ink: #fafafa;
+
+  /* Semantic status colours */
+  --success: #4ade80;
+  --success-foreground: #052e16;
+  --success-muted: #052e16;
+  --warning: #fbbf24;
+  --warning-foreground: #451a03;
+  --warning-muted: #451a03;
+  --danger: #f87171;
+  --danger-foreground: #450a0a;
+  --danger-muted: #450a0a;
+  --info: #60a5fa;
+  --info-foreground: #172554;
+  --info-muted: #172554;
+  --scrim: #000000;
 }
 
 body {
@@ -83,6 +132,19 @@ body {
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-muted: var(--warning-muted);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-muted: var(--danger-muted);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-muted: var(--info-muted);
+  --color-scrim: var(--scrim);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);

@@ -1,4 +1,16 @@
-export type ObjectType = 'rectangle' | 'ellipse' | 'text' | 'sticky' | 'path' | 'image' | 'arrow' | 'group' | 'triangle' | 'line'
+export type ObjectType = 'rectangle' | 'ellipse' | 'text' | 'sticky' | 'path' | 'image' | 'arrow' | 'group' | 'triangle' | 'line' | 'polygon' | 'circle' | 'mindmap' | 'frame' | 'card'
+
+/**
+ * How a mark's colour was chosen.
+ * - `auto`   the user drew with the default pen, or inserted a preset shape;
+ *            no colour is stored, so the actual ink is resolved per render from
+ *            the active theme.
+ * - `custom` the user deliberately picked a colour; the hex is stored and is
+ *            never auto-inverted or reassigned.
+ * Absent on objects that predate this field (templates, cards, frames) and on
+ * marks that are never theme-dependent — those keep their literal colour.
+ */
+export type ColorMode = 'auto' | 'custom'
 
 export interface BaseObject {
   id: string
@@ -12,7 +24,16 @@ export interface BaseObject {
   locked: boolean
   zIndex: number
   groupId?: string
+  colorMode?: ColorMode
   hidden?: boolean
+  name?: string
+  assetKind?: 'icon' | 'sticker' | 'image'
+  iconName?: string
+  iconColor?: string
+  stickerId?: string
+  shapeKind?: string
+  pointerAtBeginning?: boolean
+  dash?: number[]
 }
 
 export interface GroupObject extends BaseObject {
@@ -62,6 +83,46 @@ export interface StickyObject extends BaseObject {
   color: string
 }
 
+export interface MindmapObject extends BaseObject {
+  type: 'mindmap'
+  text: string
+  fontSize: number
+  fontFamily: string
+  fill: string
+  stroke: string
+  strokeWidth: number
+}
+
+export interface FrameObject extends BaseObject {
+  type: 'frame'
+  label: string
+  fontSize: number
+  fontFamily: string
+  fill: string
+  stroke: string
+  strokeWidth: number
+  cornerRadius: number
+  dash: number[]
+  labelColor: string
+}
+
+/** A shape with an editable label embedded in it — one object, not two. */
+export interface CardObject extends BaseObject {
+  type: 'card'
+  text: string
+  fontSize: number
+  fontFamily: string
+  fill: string
+  stroke: string
+  strokeWidth: number
+  cornerRadius: number
+  textColor: string
+  align: 'left' | 'center' | 'right'
+  valign: 'top' | 'middle' | 'bottom'
+  padding: number
+  shape: 'rect' | 'ellipse'
+}
+
 export interface ImageObject extends BaseObject {
   type: 'image'
   src: string
@@ -84,6 +145,21 @@ export interface TriangleObject extends BaseObject {
 export interface LineObject extends BaseObject {
   type: 'line'
   points: number[]
+  stroke: string
+  strokeWidth: number
+}
+
+export interface PolygonObject extends BaseObject {
+  type: 'polygon'
+  points: number[]
+  fill: string
+  stroke: string
+  strokeWidth: number
+}
+
+export interface CircleObject extends BaseObject {
+  type: 'circle'
+  fill: string
   stroke: string
   strokeWidth: number
 }

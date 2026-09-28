@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# Environment files — never commit credentials
+.env
+.env.*
+!.env.example
+
+# Build output
+dist-electron
+dist-release
+release-v1.0.7
+release-1.0.7-final
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -18,6 +18,16 @@ export default defineConfig({
         onstart(options) {
           options.reload()
         },
+        // Electron only accepts ESM preload scripts with a `.mjs` extension
+        // (and `sandbox: false` in the BrowserWindow). Emitting `preload.js`
+        // makes the context bridge fail to load at runtime.
+        vite: {
+          build: {
+            rollupOptions: {
+              output: { entryFileNames: '[name].mjs' },
+            },
+          },
+        },
       },
     ]),
     renderer(),

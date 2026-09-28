@@ -62,7 +62,8 @@ export const LayersPanel: React.FC = () => {
 
   const getObjectName = (obj: any) => {
     if (obj.name) return obj.name
-    if (obj.type === 'text' || obj.type === 'sticky') return obj.text || obj.type
+    if (obj.type === 'text' || obj.type === 'sticky' || obj.type === 'mindmap' || obj.type === 'card') return obj.text || obj.type
+    if (obj.type === 'frame') return obj.label || 'Frame'
     return `${obj.type} ${obj.id.slice(0, 4)}`
   }
 
