@@ -34,6 +34,10 @@ export async function handleAuthCallback(rawUrl: string): Promise<string | null>
     return 'That link could not be read.'
   }
 
+  // A share link is not an auth callback. It is handled by the caller, which
+  // redeems the token and opens the board.
+  if (url.hostname === 'share') return null
+
   // Supabase reports failures either as a query param or in the fragment.
   const fragment = new URLSearchParams(url.hash.replace(/^#/, ''))
   const search = url.searchParams

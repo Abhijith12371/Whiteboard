@@ -16,6 +16,11 @@ const SERVICE = 's3'
 const ALGORITHM = 'AWS4-HMAC-SHA256'
 const MAX_EXPIRY = 900 // 15 minutes is the cap we allow callers to request
 
+// R2 is addressed through the account-specific host, but the SigV4 credential
+// scope is always region `auto`. Passing the account id as the region is
+// rejected with InvalidRegionName.
+const REGION = 'auto'
+
 const enc = new TextEncoder()
 
 const hex = (buf: ArrayBuffer) =>
@@ -47,7 +52,7 @@ function json(body: unknown, status = 200) {
   })
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -111,7 +116,7 @@ Deno.serve(async (req) => {
   const amz = amzDate(now)
   const stamp = dateStamp(now)
   const expires = Math.min(MAX_EXPIRY, 900)
-  const credential = `${accessKeyId}/${stamp}/${accountId}/${SERVICE}/aws4_request`
+  const credential = `${accessKeyId}/${stamp}/${REGION}/${SERVICE}/aws4_request`
   const host = `${accountId}.r2.cloudflarestorage.com`
 
   // Only `host` is signed, so the caller must send that header unchanged.
@@ -135,7 +140,7 @@ Deno.serve(async (req) => {
     'UNSIGNED-PAYLOAD',
   ].join('\n')
 
-  const scope = `${stamp}/${accountId}/${SERVICE}/aws4_request`
+  const scope = `${stamp}/${REGION}/${SERVICE}/aws4_request`
   const stringToSign = [
     ALGORITHM,
     amz,
@@ -144,20 +149,32 @@ Deno.serve(async (req) => {
   ].join('\n')
 
   let key = enc.encode(`AWS4${secretAccessKey}`) as unknown as ArrayBuffer
-  for (const part of [stamp, accountId, SERVICE, 'aws4_request']) {
+  for (const part of [stamp, REGION, SERVICE, 'aws4_request']) {
     key = await hmac(key, part)
   }
   const signature = hex(await hmac(key, stringToSign))
 
   const uploadUrl = `https://${host}/${bucket}/${encodeKey(objectKey)}?${canonicalQuery}&X-Amz-Signature=${signature}`
 
+  // The URL stored on the object and handed to the browser as its `src`.
+  //
+  // It cannot be the S3 API endpoint above: that host rejects unsigned requests,
+  // so a plain <img src> against it returns 400 and the image never paints.
+  // When the bucket is served publicly (r2.dev dev domain, or a custom domain)
+  // that host is supplied as R2_PUBLIC_BASE_URL and used instead. Keys are
+  // unguessable UUIDs, so public read does not make objects enumerable.
+  const publicBase = Deno.env.get('R2_PUBLIC_BASE_URL')?.replace(/\/+$/, '')
+  const publicUrl = publicBase
+    ? `${publicBase}/${encodeKey(objectKey)}`
+    : `https://${host}/${bucket}/${encodeKey(objectKey)}`
+
   return json({
     uploadUrl,
     objectKey,
     expiresIn: expires,
-    // Public read URL assumes a custom domain / public bucket. Swap to a signed
-    // GET if the bucket stays private.
-    publicUrl: `https://${host}/${bucket}/${encodeKey(objectKey)}`,
+    publicUrl,
+    // Lets the client and diagnostics tell a served host from a dead endpoint.
+    publicUrlIsServable: Boolean(publicBase),
     contentType,
   })
 })

@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase'
 import { useAuthStore } from '../store/authStore'
 import { useUIStore } from '../store/uiStore'
-import { loadBoard, saveBoard, listBoards, deleteBoard, type BoardEntry } from '../services/db'
+import { loadBoard, saveBoard, listBoards, deleteBoard, DEFAULT_BOARD_ID, type BoardEntry } from '../services/db'
 
 /**
  * Per-device sync bookkeeping. `lastSyncedAt` is the watermark that lets us tell
@@ -85,23 +85,9 @@ export interface CloudBoardRow {
 export type BoardSyncState = 'pending' | 'queued' | 'synced' | 'deleting'
 
 const MAX_ATTEMPTS = 5
+const MAX_PUSH_ATTEMPTS = 3
 const BASE_DELAY = 1000
 const RECONCILE_INTERVAL = 120_000
-
-/**
- * Distinguishes "this board id is already owned by another account" from a
- * transient failure. Both the unique-violation and the RLS refusal arrive as
- * errors on the same upsert, and both mean the id is unusable as-is.
- */
-function isIdCollision(error: { code?: string; message?: string }): boolean {
-  const text = `${error.code ?? ''} ${error.message ?? ''}`.toLowerCase()
-  return (
-    text.includes('row-level security') ||
-    text.includes('42501') ||
-    text.includes('duplicate key') ||
-    text.includes('23505')
-  )
-}
 
 /**
  * Sync Engine — reconciles local board files with the cloud.
@@ -116,6 +102,29 @@ class SyncEngine {
   private queued = false
   private attempts = 0
   private dirty = new Set<string>()
+
+  /**
+   * Board ids this account owns. Populated each reconcile; used to decide
+   * whether a cloud delete is permitted (only the owner may remove the row).
+   */
+  private ownedBoardIds = new Set<string>()
+
+  /**
+   * Board ids owned by *someone else* that we may still write to, because they
+   * were shared with us. These are the only boards pushed with PATCH instead of
+   * an upsert, so that an editor can never overwrite owner_id and take the
+   * board over.
+   */
+  private sharedBoardIds = new Set<string>()
+
+  /**
+   * Consecutive push failures per board, and ids already re-keyed this session.
+   *
+   * Without these the engine re-keys the same board forever: each attempt mints
+   * a new id, fails again, and the cycle repeats, producing hundreds of copies.
+   */
+  private pushFailures = new Map<string, number>()
+  private rekeyedOnce = new Set<string>()
 
   /** Called by the app after every successful local save. */
   markDirty(boardId: string) {
@@ -252,6 +261,14 @@ class SyncEngine {
     const failed: Tombstone[] = []
     for (const t of pending) {
       try {
+        // Only the owner can remove a cloud row. For a board shared *to* this
+        // account the local copy is what was asked for, and the cloud row is the
+        // owner's to keep — retrying would fail forever.
+        if (!this.ownedBoardIds.has(t.id)) {
+          this.forgetBoard(t.id)
+          continue
+        }
+
         const { error } = await supabase!
           .from('boards')
           .delete()
@@ -259,17 +276,10 @@ class SyncEngine {
           .eq('owner_id', user.id)
         if (error) throw error
 
-        // Board row gone. Its board_members / shared_links / file_references
-        // rows go with it through ON DELETE CASCADE, so nothing else to do.
-        // Forget the board's watermark so a future board reusing the id is
-        // treated as never-synced rather than assumed current.
-        try {
-          const all = readState()
-          delete all[t.id]
-          localStorage.setItem(STATE_KEY, JSON.stringify(all))
-        } catch {
-          /* ignore */
-        }
+        // The board row is gone. Its board_members / shared_links /
+        // file_references rows go with it through ON DELETE CASCADE, so nothing
+        // else to do.
+        this.forgetBoard(t.id)
       } catch (err) {
         failed.push(t)
         console.error(`Could not delete board ${t.id} from the cloud:`, err)
@@ -279,12 +289,30 @@ class SyncEngine {
     writeTombstones(failed)
   }
 
+  /** Clear a board's local bookkeeping after a successful cloud removal. */
+  private forgetBoard(boardId: string) {
+    this.ownedBoardIds.delete(boardId)
+    this.dirty.delete(boardId)
+    try {
+      const all = readState()
+      delete all[boardId]
+      localStorage.setItem(STATE_KEY, JSON.stringify(all))
+    } catch {
+      /* ignore */
+    }
+  }
+
   /** Push local edits, then pull anything newer from the cloud. */
   private async reconcile() {
     const { user } = useAuthStore.getState()
     if (!user) throw new Error('Not authenticated')
 
-    // Deletions run first so a board removed offline is gone from the cloud
+    // Ownership and membership must be resolved first: flushDeletions and
+    // pushBoard both branch on them, and both run before the pull step that
+    // would otherwise populate them.
+    await this.refreshAccessSets()
+
+    // Deletions run next so a board removed offline is gone from the cloud
     // before the pull step could otherwise re-adopt it.
     await this.flushDeletions()
     const tombstoned = new Set(readTombstones().map((t) => t.id))
@@ -305,11 +333,33 @@ class SyncEngine {
         pending.add(board.id)
       }
     }
-    for (const id of pending) await this.pushBoard(id)
+    // One board failing must not abort the whole pass, and must not spin: an
+    // earlier version re-keyed the same board forever, minting hundreds of new
+    // ids. Failures are recorded per board and the pass continues.
+    const failures: string[] = []
+    for (const id of pending) {
+      try {
+        await this.pushBoard(id)
+      } catch (err) {
+        failures.push(id)
+        console.error(`Could not sync board ${id}:`, err)
+      }
+    }
+    // Re-queue only what failed, but never the same board more than a few times
+    // in a row, so a persistently un-pushable board cannot monopolise the engine.
+    if (failures.length) {
+      for (const id of failures) {
+        const n = (this.pushFailures.get(id) ?? 0) + 1
+        this.pushFailures.set(id, n)
+        if (n <= MAX_PUSH_ATTEMPTS) this.dirty.add(id)
+        else this.pushFailures.delete(id)
+      }
+    }
 
-    // 2. Pull. Remote rows the user owns that this device has never seen are
-    //    adopted, and rows that also exist locally are reconciled.
-    const remote = await this.fetchOwnedBoards()
+    // 2. Pull. Remote rows the user can reach that this device has never seen
+    //    are adopted, and rows that also exist locally are reconciled. This
+    //    covers owned *and* shared boards.
+    const remote = await this.fetchAccessibleBoards()
     for (const row of remote) {
       if (tombstoned.has(row.id)) continue
       if (localIds.has(row.id)) {
@@ -389,25 +439,41 @@ class SyncEngine {
     if (!user) throw new Error('Not authenticated')
 
     const at = local.updatedAt ?? Date.now()
-    const { error } = await supabase!
-      .from('boards')
-      .upsert({
-        id: local.id,
-        owner_id: user.id,
-        name: local.name,
-        created_at: new Date(local.createdAt).toISOString(),
-        updated_at: new Date(at).toISOString(),
-        data: local.data,
-        is_synced: true,
-        last_synced_at: new Date().toISOString(),
-      })
+    const content = {
+      name: local.name,
+      updated_at: new Date(at).toISOString(),
+      data: local.data,
+      is_synced: true,
+      last_synced_at: new Date().toISOString(),
+    }
+
+    // owner_id is only ever set when creating a board. Sending it on every push
+    // would hand ownership to whichever account last edited it, so a board shared
+    // for editing would silently transfer to the editor. Non-owned boards are
+    // therefore updated with PATCH, which cannot touch the ownership column.
+    //
+    // The test is `sharedBoardIds`, not "not owned": a board that does not exist
+    // in the cloud yet is also absent from the owned set, and PATCHing it would
+    // match no row and silently create nothing. Only a board we know *someone
+    // else* owns must take the PATCH path.
+    const owned = !this.sharedBoardIds.has(local.id)
+    const { error } = owned
+      ? await supabase!
+          .from('boards')
+          .upsert({ id: local.id, owner_id: user.id, ...content })
+      : await supabase!
+          .from('boards')
+          .update(content)
+          .eq('id', local.id)
 
     if (error) {
-      // The seeded board id (DEFAULT_BOARD_ID) is the same constant on every
-      // install, so two accounts can collide on the global primary key. RLS
-      // correctly refuses the second one, which would otherwise leave that
-      // user's board stuck failing to sync forever. Re-key and retry.
-      if (isIdCollision(error)) {
+      // The seeded board id (DEFAULT_BOARD_ID) is a fixed constant shared by
+      // every install, so two accounts can collide on the global primary key.
+      // RLS correctly refuses the second one. Only that id is ever re-keyed:
+      // any other collision is a different fault and must surface as an error
+      // rather than be papered over by minting a fresh copy of the board.
+      if (local.id === DEFAULT_BOARD_ID && !this.rekeyedOnce.has(local.id)) {
+        this.rekeyedOnce.add(local.id)
         const rekeyed = await this.rekeyLocalBoard(local.id)
         if (rekeyed) return this.pushBoard(rekeyed)
       }
@@ -454,6 +520,84 @@ class SyncEngine {
       .order('updated_at', { ascending: false })
     if (error) throw error
     return (data ?? []) as CloudBoardRow[]
+  }
+
+  /**
+   * Every board this account may see: the ones it owns plus the ones shared
+   * with it.
+   *
+   * Ownership is remembered so `pushBoard` can choose between upsert (create)
+   * and PATCH (edit) — the difference between syncing a shared board and
+   * accidentally taking ownership of it.
+   */
+  async fetchAccessibleBoards(): Promise<CloudBoardRow[]> {
+    const { user } = useAuthStore.getState()
+    if (!user) return []
+
+    const owned = await this.fetchOwnedBoards()
+    for (const b of owned) this.ownedBoardIds.add(b.id)
+
+    // Shared boards cannot be reached through the owner_id filter, and PostgREST
+    // cannot join through board_members under this project's RLS, so the
+    // membership ids are fetched first and the boards looked up by id.
+    const { data: memberships, error: memErr } = await supabase!
+      .from('board_members')
+      .select('board_id')
+      .eq('user_id', user.id)
+    if (memErr) throw memErr
+
+    const sharedIds = (memberships ?? [])
+      .map((m) => m.board_id as string)
+      .filter((id) => !this.ownedBoardIds.has(id))
+
+    // Everything reachable but not owned is a board someone else owns.
+    this.sharedBoardIds = new Set(sharedIds)
+
+    if (sharedIds.length === 0) return owned
+
+    const { data: shared, error: sharedErr } = await supabase!
+      .from('boards')
+      .select('id, owner_id, name, data, updated_at')
+      .in('id', sharedIds)
+      .order('updated_at', { ascending: false })
+    if (sharedErr) throw sharedErr
+
+    return [...owned, ...((shared ?? []) as CloudBoardRow[])]
+  }
+
+  /**
+   * Resolves which boards this account owns and which are shared *to* it.
+   *
+   * Both sets must be known before any push: pushBoard picks upsert vs PATCH
+   * from them, and picking wrong either strands a new board (PATCH matches no
+   * row) or transfers ownership of someone else's board.
+   */
+  async refreshAccessSets(): Promise<void> {
+    const { user } = useAuthStore.getState()
+    if (!user) {
+      this.ownedBoardIds = new Set()
+      this.sharedBoardIds = new Set()
+      return
+    }
+
+    const { data: owned, error } = await supabase!
+      .from('boards')
+      .select('id')
+      .eq('owner_id', user.id)
+    if (error) throw error
+    this.ownedBoardIds = new Set((owned ?? []).map((b) => b.id as string))
+
+    const { data: memberships, error: memErr } = await supabase!
+      .from('board_members')
+      .select('board_id')
+      .eq('user_id', user.id)
+    if (memErr) throw memErr
+
+    this.sharedBoardIds = new Set(
+      (memberships ?? [])
+        .map((m) => m.board_id as string)
+        .filter((id) => !this.ownedBoardIds.has(id)),
+    )
   }
 
   /**

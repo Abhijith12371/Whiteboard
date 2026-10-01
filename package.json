@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.7",
   "type": "module",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -15,6 +15,14 @@
     "appId": "com.digiboard.app",
     "productName": "Whiteboard",
     "copyright": "Copyright © 2026 Digiboard",
+    "protocols": [
+      {
+        "name": "DigiBoard board link",
+        "schemes": [
+          "digiboard"
+        ]
+      }
+    ],
     "directories": {
       "output": "dist-release"
     },

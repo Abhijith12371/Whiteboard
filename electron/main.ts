@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, clipboard } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -34,9 +34,16 @@ const DEEP_LINK_SCHEME = 'digiboard'
 let pendingDeepLink: string | null = null
 
 if (process.defaultApp && process.argv.length >= 2) {
-  // Dev build: the executable is electron itself, so the script path must be
+  // Dev build: the executable is electron itself, so the app path must be
   // registered too or Windows will not route the scheme back to us.
-  app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME, process.execPath, [process.argv[1]])
+  //
+  // The path must be absolute. Windows launches the protocol handler with an
+  // unrelated working directory (C:\Windows\System32), so a relative path such
+  // as "." resolves against that and Electron reports
+  // "Unable to find Electron app at C:\WINDOWS\system32".
+  app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME, process.execPath, [
+    path.resolve(process.argv[1]),
+  ])
 } else {
   app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME)
 }
@@ -77,14 +84,18 @@ if (!gotLock) {
   })
 }
 
-// Electron requires an ESM preload to use the `.mjs` extension; older output
-// used `.js`. Prefer `.mjs` and fall back so the bridge is never skipped.
+// The preload is emitted as CommonJS (see vite.config.ts) and must use a
+// `.cjs` extension because package.json declares "type": "module". The `.mjs`
+// and `.js` names are still accepted so a stale build does not break launch.
 function resolvePreload(): string {
-  const mjs = path.join(__dirname, 'preload.mjs')
-  const js = path.join(__dirname, 'preload.js')
-  if (fs.existsSync(mjs)) return mjs
-  if (fs.existsSync(js)) return js
-  throw new Error(`Electron preload script not found in ${__dirname} (looked for preload.mjs and preload.js)`)
+  const candidates = ['preload.cjs', 'preload.mjs', 'preload.js']
+  for (const name of candidates) {
+    const p = path.join(__dirname, name)
+    if (fs.existsSync(p)) return p
+  }
+  throw new Error(
+    `Electron preload script not found in ${__dirname} (looked for ${candidates.join(', ')})`,
+  )
 }
 
 function createWindow() {
@@ -129,6 +140,19 @@ function createWindow() {
       win.setTitleBarOverlay({ color: options.color, symbolColor: options.symbolColor, height: 40 })
     } catch {
       // Overlay unsupported (e.g. non-Windows) — safe to ignore.
+    }
+  })
+
+  // Share links are copied through Electron's clipboard: the renderer's
+  // navigator.clipboard is rejected unless the document holds focus, so a
+  // button promising "Create & copy" would silently fail to copy.
+  ipcMain.handle('clipboard-write', (_event, text: unknown) => {
+    if (typeof text !== 'string' || !text) return false
+    try {
+      clipboard.writeText(text)
+      return true
+    } catch {
+      return false
     }
   })
 

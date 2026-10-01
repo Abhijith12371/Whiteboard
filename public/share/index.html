@@ -1,0 +1,99 @@
+<!doctype html>
+<!--
+  DigiBoard share landing page.
+
+  Hosted on the public R2 bucket and linked to by the `share-redeem` edge
+  function. It cannot be served from the function itself: Supabase's gateway
+  rewrites any text/html response to text/plain, so the browser would show the
+  source instead of a page.
+
+  This page contains no board data and no credential. It reads the token from
+  its own query string, builds a digiboard:// deep link, and the app redeems
+  that token against the server where RLS applies. The board name and
+  permission are display-only and are written with textContent, so a board named
+  with markup cannot inject anything here.
+
+  Deploy:
+    node scripts/upload-share-landing.mjs
+-->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shared board · DigiBoard</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: #fafafa; color: #09090b; padding: 1.5rem;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #09090b; color: #fafafa; } }
+  .card {
+    width: 100%; max-width: 26rem; background: #fff;
+    border: 1px solid rgba(128,128,128,.28); border-radius: 1rem; padding: 2rem;
+    box-shadow: 0 10px 40px rgba(0,0,0,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    .card { background: #18181b; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  }
+  .logo { font-weight: 700; letter-spacing: -.02em; margin: 0 0 1.5rem; font-size: 1.125rem; }
+  h1 { font-size: 1.25rem; margin: 0 0 .35rem; overflow-wrap: anywhere; }
+  p { margin: 0 0 1.25rem; color: #71717a; font-size: .9375rem; }
+  .pill {
+    display: inline-block; font-size: .75rem; font-weight: 600; padding: .2rem .55rem;
+    border-radius: 999px; background: rgba(37,99,235,.12); color: #2563eb; margin-bottom: .75rem;
+  }
+  a.btn {
+    display: block; text-align: center; text-decoration: none; font-weight: 600;
+    padding: .8rem 1rem; border-radius: .6rem; background: #2563eb; color: #fff;
+  }
+  a.btn:hover { background: #1d4ed8; }
+  .note { margin-top: 1.25rem; font-size: .8125rem; text-align: center; color: #71717a; }
+  code { font-size: .8125rem; overflow-wrap: anywhere; }
+</style>
+<body>
+  <main class="card">
+    <p class="logo">DigiBoard</p>
+    <span class="pill" id="perm">Shared board</span>
+    <h1 id="title">You've been invited to a whiteboard</h1>
+    <p id="blurb">The board opens in the DigiBoard app. Sign in to continue.</p>
+    <a class="btn" id="open" href="#">Open in DigiBoard</a>
+    <p class="note" id="note">If the app doesn't open, copy this code into DigiBoard:<br>
+      <code id="token">&nbsp;</code></p>
+  </main>
+  <script>
+    // Nothing leaves this page. The token is used only to build the deep link;
+    // the app then redeems it against the server, where RLS decides access.
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var token = params.get('token') || '';
+      var perm = params.get('perm') || '';
+      var name = params.get('name') || '';
+      var err = params.get('err') || '';
+
+      if (err) {
+        // Revoked, expired or unknown link: say so instead of offering a
+        // button that cannot work.
+        document.getElementById('title').textContent = 'Link unavailable';
+        document.getElementById('blurb').textContent = err;
+        document.getElementById('perm').style.display = 'none';
+        document.getElementById('open').style.display = 'none';
+        document.getElementById('note').style.display = 'none';
+        document.title = 'Link unavailable · DigiBoard';
+        return;
+      }
+
+      if (perm) document.getElementById('perm').textContent = perm;
+      if (name) {
+        document.getElementById('title').textContent = name;
+        document.title = name + ' · DigiBoard';
+      }
+      if (token) {
+        document.getElementById('token').textContent = token;
+        document.getElementById('open').href =
+          'digiboard://share?token=' + encodeURIComponent(token);
+      }
+    })();
+  </script>
+</body>
+</html>

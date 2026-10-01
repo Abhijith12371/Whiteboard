@@ -55,6 +55,9 @@ export type LibraryPanel = 'none' | 'shapes' | 'icons' | 'stickers' | 'media' | 
 /** Local-only persistence status, surfaced in the header. */
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+/** What the signed-in user may do with the active board. */
+export type BoardRole = 'owner' | 'editor' | 'viewer' | 'none'
+
 interface UIState {
   activeTool: Tool;
   shapeKind: ShapeKind;
@@ -77,6 +80,13 @@ interface UIState {
   libraryPanel: LibraryPanel;
   isCommandPaletteOpen: boolean;
   isShortcutsOpen: boolean;
+  isShareOpen: boolean;
+  /**
+   * What the signed-in user may do with the active board. 'viewer' boards are
+   * read-only locally; RLS is what actually enforces it, this keeps the UI from
+   * inviting edits that would be rejected.
+   */
+  boardRole: BoardRole;
   isPresenting: boolean;
   spotlightOn: boolean;
   timerSeconds: number;
@@ -104,6 +114,8 @@ interface UIState {
   setLibraryPanel: (panel: LibraryPanel) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
+  setShareOpen: (open: boolean) => void;
+  setBoardRole: (role: BoardRole) => void;
   setPresenting: (on: boolean) => void;
   setSpotlightOn: (on: boolean) => void;
   setTimerSeconds: (n: number) => void;
@@ -157,6 +169,8 @@ export const useUIStore = create<UIState>((set, get) => {
   libraryPanel: 'none',
   isCommandPaletteOpen: false,
   isShortcutsOpen: false,
+  isShareOpen: false,
+  boardRole: 'owner',
   isPresenting: false,
   spotlightOn: false,
   timerSeconds: 0,
@@ -202,6 +216,8 @@ export const useUIStore = create<UIState>((set, get) => {
   setLibraryPanel: (libraryPanel) => set({ libraryPanel }),
   setCommandPaletteOpen: (isCommandPaletteOpen) => set({ isCommandPaletteOpen }),
   setShortcutsOpen: (isShortcutsOpen) => set({ isShortcutsOpen }),
+  setShareOpen: (isShareOpen) => set({ isShareOpen }),
+  setBoardRole: (boardRole) => set({ boardRole }),
   setPresenting: (isPresenting) => set({ isPresenting, libraryPanel: 'none' }),
   setSpotlightOn: (spotlightOn) => set({ spotlightOn }),
   setTimerSeconds: (timerSeconds) => set({ timerSeconds }),

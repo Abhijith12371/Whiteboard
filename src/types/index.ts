@@ -123,9 +123,23 @@ export interface CardObject extends BaseObject {
   shape: 'rect' | 'ellipse'
 }
 
+/**
+ * Set when an object's bytes live in cloud storage rather than inline in the
+ * board. `src` remains the renderable URL either way, so existing boards and
+ * every render path keep working — this only records where the bytes came from
+ * so the file can be reconciled and cleaned up later.
+ */
+export interface AssetRef {
+  /** R2 object key: users/{userId}/boards/{boardId}/{fileId}. */
+  key: string
+  /** `file_references` row id. */
+  fileId: string
+}
+
 export interface ImageObject extends BaseObject {
   type: 'image'
   src: string
+  assetRef?: AssetRef
 }
 
 export interface ArrowObject extends BaseObject {

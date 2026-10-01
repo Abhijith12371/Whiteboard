@@ -33,3 +33,12 @@ contextBridge.exposeInMainWorld('__electron_deepLink', (listener: (url: string) 
   ipcRenderer.on('deep-link', handler)
   return () => ipcRenderer.removeListener('deep-link', handler)
 })
+
+// Copy text using Electron's clipboard module.
+//
+// navigator.clipboard.writeText is rejected in the renderer unless the document
+// holds focus, so "Create & copy link" would silently not copy. This route does
+// not depend on document focus.
+contextBridge.exposeInMainWorld('__electron_copyText', (text: string) =>
+  ipcRenderer.invoke('clipboard-write', text),
+)

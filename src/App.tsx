@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { TopBar } from './components/layout/TopBar'
 import { LeftToolbar } from './components/layout/LeftToolbar'
 import { Canvas } from './components/canvas/Canvas'
@@ -22,6 +22,9 @@ import { ShapesMenu } from './components/layout/ShapesMenu'
 import { copySelection, cutSelection, pasteClipboard, duplicateSelection, selectAll, deleteSelection } from './lib/workspaceActions'
 import { MigrationPrompt } from './components/auth/MigrationPrompt'
 import { onAuthDeepLink, handleAuthCallback } from './lib/authDeepLink'
+import { pruneOrphanedFiles } from './lib/fileStorage'
+import { getMyAccess, redeemShareToken, parseTokenFromInput } from './lib/sharing'
+import { ShareDialog } from './components/layout/ShareDialog'
 
 function App() {
   const setSpacePressed = useUIStore((state) => state.setSpacePressed)
@@ -57,6 +60,9 @@ function App() {
   const [booted, setBooted] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
   const [dbAvailable, setDbAvailable] = useState(true)
+  const isShareOpen = useUIStore((state) => state.isShareOpen)
+  const setShareOpen = useUIStore((state) => state.setShareOpen)
+
   const [migrationPrompt, setMigrationPrompt] = useState({ open: false, boards: [] as string[] })
 
   // Stable identity: the prompt runs this inside an effect, and an inline
@@ -65,6 +71,50 @@ function App() {
     () => setMigrationPrompt((p) => ({ ...p, open: false })),
     [],
   )
+
+  // Access is per-board: a board shared to this account may be read-only, so the
+  // role is resolved whenever the active board changes. Declared before the
+  // board-loading effect that calls it.
+  const refreshBoardRole = useCallback(async (boardId: string) => {
+    const { user } = useAuthStore.getState()
+    if (!user) {
+      // No identity means nothing to share against: a link needs a cloud row
+      // keyed to an account. 'none' hides the Share affordance rather than
+      // offering it and then failing on insert.
+      useUIStore.getState().setBoardRole('none')
+      return
+    }
+    try {
+      const { role } = await getMyAccess(boardId)
+      useUIStore.getState().setBoardRole(role)
+    } catch {
+      // If the lookup itself fails, do not claim ownership — an unnecessary
+      // Share button is worse than a missing one.
+      useUIStore.getState().setBoardRole('none')
+    }
+  }, [])
+
+  // Re-resolve access when the signed-in account changes, not only when the
+  // board changes. Without this the role keeps its initial value after sign-in,
+  // which would offer Share on a board the account does not own — the insert is
+  // then rejected by RLS and the user is shown a database error.
+  const signedInUserId = useAuthStore((state) => state.user?.id)
+  useEffect(() => {
+    if (!isLoaded || !activeBoardId) return
+    void refreshBoardRole(activeBoardId)
+  }, [signedInUserId, isLoaded, activeBoardId, refreshBoardRole])
+
+  // A board opened before it reaches the cloud resolves to 'none' — there is
+  // nothing to match against yet. Re-check once a sync completes, but only
+  // while we are in that state, so a normal board does not re-query on every
+  // pass. Without this, a board created offline and then synced would never
+  // offer Share.
+  const syncStatus = useAuthStore((state) => state.syncStatus)
+  useEffect(() => {
+    if (syncStatus !== 'synced') return
+    if (useUIStore.getState().boardRole !== 'none') return
+    void refreshBoardRole(activeBoardId)
+  }, [syncStatus, activeBoardId, refreshBoardRole])
 
   useEffect(() => {
     if (!booted || !dbAvailable) return
@@ -83,6 +133,7 @@ function App() {
           setActiveBoard(board.id, board.name)
         }
         useBoardStore.getState().loadPagesFromBoard(board.data)
+        void refreshBoardRole(board.id)
       } catch {
         if (!cancelled) setDbAvailable(false)
       } finally {
@@ -112,20 +163,6 @@ function App() {
       await useAuthStore.getState().initAuth()
     }
     initAuth()
-  }, [])
-
-  // Complete password-reset / confirmation links that return via digiboard://
-  useEffect(() => {
-    let cancelled = false
-    const off = onAuthDeepLink(async (url) => {
-      const error = await handleAuthCallback(url)
-      if (cancelled) return
-      useUIStore.getState().setToast(error ?? 'Signed in')
-    })
-    return () => {
-      cancelled = true
-      off()
-    }
   }, [])
 
   // Start/stop sync based on identity and connectivity only.
@@ -177,6 +214,85 @@ function App() {
     )
   }, [theme])
 
+  // Reconcile cloud files against the board's live images.
+  //
+  // Driven from the save path so every removal route is covered — delete,
+  // undo, grouping, importing another board over this one — without any of
+  // those call sites knowing storage exists. Debounced well past the save
+  // debounce so a burst of edits prunes once at the end.
+  const pruneTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleFilePrune = useCallback(
+    (boardId: string, boardObjects: Record<string, any>) => {
+      if (!useAuthStore.getState().user) return
+      if (pruneTimer.current !== null) clearTimeout(pruneTimer.current)
+      pruneTimer.current = setTimeout(() => {
+        const keys = new Set<string>()
+        for (const obj of Object.values(boardObjects)) {
+          const key = (obj as any)?.assetRef?.key
+          if (typeof key === 'string') keys.add(key)
+        }
+        pruneOrphanedFiles(boardId, keys).catch((err) =>
+          console.warn('Could not reconcile cloud files:', err),
+        )
+      }, 8000)
+    },
+    [],
+  )
+
+  useEffect(
+    () => () => {
+      if (pruneTimer.current !== null) clearTimeout(pruneTimer.current)
+    },
+    [],
+  )
+
+  /**
+   * Exchange a share token for access, then open the board.   *
+   * A link only creates a member row; the board content still arrives through
+   * the normal sync path, so an offline device opens it from its local copy
+   * exactly like any other board.
+   */
+  const openSharedBoard = useCallback(
+    async (token: string) => {
+      try {
+        const result = await redeemShareToken(token)
+        await syncEngine.sync()
+        setActiveBoard(result.boardId, result.boardName)
+        useUIStore.getState().setHomeOpen(false)
+        useUIStore
+          .getState()
+          .setBoardRole(result.permission === 'edit' ? 'editor' : 'viewer')
+        useUIStore.getState().setToast(`Opened shared board “${result.boardName}”`)
+      } catch (err) {
+        useUIStore.getState().setToast(err instanceof Error ? err.message : 'Could not open that link')
+      }
+    },
+    [setActiveBoard],
+  )
+
+  // Complete password-reset / confirmation links that return via digiboard://,
+  // and share links, which carry a token rather than a session.
+  useEffect(() => {
+    let cancelled = false
+    const off = onAuthDeepLink(async (url) => {
+      if (cancelled) return
+
+      const token = parseTokenFromInput(url)
+      if (token) {
+        await openSharedBoard(token)
+        return
+      }
+
+      const error = await handleAuthCallback(url)
+      if (cancelled) return
+      useUIStore.getState().setToast(error ?? 'Signed in')
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [openSharedBoard])
+
   useEffect(() => {
     if (!isLoaded || !dbAvailable || !activeBoardId) return
     const timeoutId = setTimeout(() => {
@@ -190,7 +306,14 @@ function App() {
           setSaveState('saved')
           // Local write is the source of truth; cloud push is a background
           // concern, so the board is queued rather than awaited here.
-          syncEngine.markDirty(activeBoardId)
+          //
+          // A viewer cannot write the owner's board, so queueing would only
+          // produce a request RLS rejects on every cycle. RLS is what actually
+          // stops the write; this avoids the doomed attempt.
+          if (useUIStore.getState().boardRole !== 'viewer') {
+            syncEngine.markDirty(activeBoardId)
+          }
+          scheduleFilePrune(activeBoardId, objects)
         })
         .catch(() => {
           setDbAvailable(false)
@@ -198,7 +321,8 @@ function App() {
         })
     }, 1000)
     return () => clearTimeout(timeoutId)
-  }, [objects, objectIds, isLoaded, dbAvailable, activeBoardId, activeBoardName, pages, activePageId, pageSnapshots])
+  }, [objects, objectIds, isLoaded, dbAvailable, activeBoardId, activeBoardName, pages, activePageId, pageSnapshots, scheduleFilePrune])
+
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -338,6 +462,14 @@ function App() {
       </div>
       <CommandPalette />
       <ShortcutsPanel />
+      {isShareOpen && (
+        <ShareDialog
+          boardId={activeBoardId}
+          boardName={activeBoardName}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
+
       <MigrationPrompt
         open={migrationPrompt.open}
         onClose={closeMigration}

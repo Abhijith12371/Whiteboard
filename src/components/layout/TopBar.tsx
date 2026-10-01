@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { Home, Presentation, Keyboard, Undo2, Redo2, Download, Upload, PanelRight, LayoutTemplate, Layers, FileStack, Command, Sun, Moon } from 'lucide-react'
+import { Home, Presentation, Keyboard, Undo2, Redo2, Download, Upload, PanelRight, LayoutTemplate, Layers, FileStack, Command, Sun, Moon, Share2, Eye } from 'lucide-react'
 import { useBoardStore } from '../../store/boardStore'
 import { useUIStore } from '../../store/uiStore'
 import { BoardSettingsPanel } from './BoardSettingsPanel'
@@ -28,6 +28,8 @@ export const TopBar = () => {
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const boardRole = useUIStore((state) => state.boardRole)
+  const setShareOpen = useUIStore((state) => state.setShareOpen)
 
   // Renaming goes through the same dialog as creation, so a board cannot be
   // renamed into a duplicate name after the fact.
@@ -173,6 +175,30 @@ export const TopBar = () => {
             <Keyboard size={16} />
           </button>
         </ToolbarTip>
+
+        {/* Sharing is owner-only; a member opening the dialog would just see an
+            empty, non-functional panel because RLS rejects every read. */}
+        {boardRole === 'owner' && (
+          <ToolbarTip label="Share this board" shortcut="">
+            <button
+              aria-label="Share this board"
+              onClick={() => setShareOpen(true)}
+              className="p-2 hover:bg-accent/50 rounded-lg text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            >
+              <Share2 size={16} />
+            </button>
+          </ToolbarTip>
+        )}
+
+        {boardRole === 'viewer' && (
+          <span
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-muted text-xs font-medium text-muted-foreground border border-border shrink-0"
+            title="You have view-only access to this shared board"
+          >
+            <Eye size={12} />
+            <span className="hidden sm:inline">View only</span>
+          </span>
+        )}
 
         <div className="w-px h-6 bg-border/40 mx-1" />
 

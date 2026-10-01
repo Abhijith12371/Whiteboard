@@ -6,9 +6,9 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useUIStore } from '../../store/uiStore'
-import { useBoardStore } from '../../store/boardStore'
 import { ToolbarTip } from '../ui/ToolbarTip'
 import { AssetLibrary, MediaMenu, MoreToolsMenu } from './AssetLibrary'
+import { insertImageFile } from '../../lib/insertImage'
 
 const LAYOUT_KEY = 'digiboard_toolbar_layout'
 const MIN_ITEM = 14
@@ -135,29 +135,18 @@ export const LeftToolbar: React.FC = () => {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const src = event.target?.result as string
-      const img = new Image()
-      img.onload = () => {
-        const id = crypto.randomUUID()
-        const max = 480
-        const scale = Math.min(1, max / Math.max(img.width, img.height))
-        useBoardStore.getState().addObject({
-          id, type: 'image',
-          x: window.innerWidth / 2 - (img.width * scale) / 2,
-          y: window.innerHeight / 2 - (img.height * scale) / 2,
-          width: img.width * scale, height: img.height * scale,
-          src, rotation: 0, opacity: 1, locked: false, zIndex: 0, assetKind: 'image',
-        } as any)
-        useUIStore.getState().setSelectedIds([id])
-        setActiveTool('select')
-        setLibraryPanel('none')
-      }
-      img.src = src
-    }
-    reader.readAsDataURL(file)
     e.target.value = ''
+
+    // Centred on the viewport, and selected once inserted so it can be moved
+    // or restyled straight away.
+    void insertImageFile(file, {
+      at: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+      anchor: 'center',
+    }).then(id => {
+      useUIStore.getState().setSelectedIds([id])
+      setActiveTool('select')
+      setLibraryPanel('none')
+    })
   }
 
   if (isPresenting) return null

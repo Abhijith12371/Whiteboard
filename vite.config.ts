@@ -11,20 +11,35 @@ export default defineConfig({
     tailwindcss(),
     electron([
       {
+        // Electron's main process is CommonJS. package.json declares
+        // "type": "module", so without an explicit CJS format the emitted
+        // dist-electron/main.js is loaded as ESM and
+        // `import { BrowserWindow } from 'electron'` fails with "does not
+        // provide an export named 'BrowserWindow'" — the app never starts.
+        // main.ts already relies on __dirname, which only exists in CJS.
         entry: 'electron/main.ts',
+        vite: {
+          build: {
+            lib: { formats: ['cjs'] },
+            rollupOptions: {
+              output: { format: 'cjs', entryFileNames: '[name].cjs' },
+            },
+          },
+        },
       },
       {
         entry: 'electron/preload.ts',
         onstart(options) {
           options.reload()
         },
-        // Electron only accepts ESM preload scripts with a `.mjs` extension
-        // (and `sandbox: false` in the BrowserWindow). Emitting `preload.js`
-        // makes the context bridge fail to load at runtime.
+        // Same reasoning as main: emit CommonJS so contextBridge and ipcRenderer
+        // are read from the CJS electron builtin rather than through ESM named
+        // exports, which Electron's main process does not reliably provide.
         vite: {
           build: {
+            lib: { formats: ['cjs'] },
             rollupOptions: {
-              output: { entryFileNames: '[name].mjs' },
+              output: { format: 'cjs', entryFileNames: '[name].cjs' },
             },
           },
         },

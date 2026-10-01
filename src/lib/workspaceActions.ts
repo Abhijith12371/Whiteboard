@@ -3,6 +3,7 @@ import { useUIStore } from '../store/uiStore'
 import { TEMPLATES } from './assets/templates'
 import { adaptObjectForTheme, resolveMarkColor } from './colors'
 import { insertIcon, insertSticker, insertStickyAt, insertTextAt, insertPresetShape, clientToCanvas } from './insertAssets'
+import { insertImageFile } from './insertImage'
 
 export function toast(msg: string) {
   useUIStore.getState().setToast(msg)
@@ -242,24 +243,8 @@ export function handleDroppedFiles(files: FileList, clientX: number, clientY: nu
   Array.from(files).forEach((file, i) => {
     const at = clientToCanvas(clientX + i * 24, clientY + i * 24)
     if (file.type.startsWith('image/') || file.name.endsWith('.svg')) {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const src = event.target?.result as string
-        const img = new Image()
-        img.onload = () => {
-          const id = crypto.randomUUID()
-          const max = 480
-          const scale = Math.min(1, max / Math.max(img.width, img.height))
-          useBoardStore.getState().addObject({
-            id, type: 'image',
-            x: at.x, y: at.y,
-            width: img.width * scale, height: img.height * scale,
-            src, rotation: 0, opacity: 1, locked: false, zIndex: 0, assetKind: 'image',
-          } as any)
-        }
-        img.src = src
-      }
-      reader.readAsDataURL(file)
+      // Drops land at the cursor, so the point is the top-left.
+      void insertImageFile(file, { at })
     } else if (file.type === 'application/json' || file.name.endsWith('.json')) {
       file.text().then((text) => {
         try {

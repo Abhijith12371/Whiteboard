@@ -1,0 +1,30 @@
+project_id = "ltkjrxgsrsiecqoxxwgg"
+
+# Functions are deployed with the Supabase CLI:
+#   supabase functions deploy r2-upload-url
+#   supabase functions deploy r2-delete
+#
+# Secrets are set out of band and never live in this file or in .env's active
+# (VITE_) variables:
+#   supabase secrets set R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... \
+#     R2_SECRET_ACCESS_KEY=... R2_BUCKET_NAME=digiboard
+
+[functions.r2-upload-url]
+# The gateway rejects anonymous callers before the function runs. The function
+# then re-verifies the JWT and checks board access through RLS, so a valid
+# session for one user still cannot mint an upload URL for another's board.
+verify_jwt = true
+
+[functions.r2-delete]
+# Same two-layer check: gateway-verified JWT, then the function requires the key
+# to sit under users/{ownId}/boards/ and confirms board write access via RLS.
+verify_jwt = true
+
+[functions.share-redeem]
+# Left open deliberately. This function serves two callers:
+#   - the landing page, fetched by a browser that has no session yet
+#   - redemption, which needs a session and is enforced inside the function
+# If the gateway verified a JWT here, the share link page would 401 for exactly
+# the people it exists to serve. A shared_links row still cannot be read by
+# token through PostgREST — that table has no such policy.
+verify_jwt = false
