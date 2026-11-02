@@ -50,10 +50,29 @@ You can download the compiled Windows executable from the Releases page.
 
 Requirements: Node.js (v18+)
 
-```bash
-# Install dependencies
-npm install
+### Setup
 
+1. Clone the repository
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Set up environment variables:
+```bash
+# Copy the example files
+copy .env.example .env
+copy supabase\config.toml.example supabase\config.toml
+
+# Edit .env and add your Supabase credentials:
+# - VITE_SUPABASE_URL (your Supabase project URL)
+# - VITE_SUPABASE_ANON_KEY (your Supabase anon/public key)
+
+# Edit supabase/config.toml and add your project_id
+```
+
+4. Start development:
+```bash
 # Start development server
 npm run dev
 
@@ -61,3 +80,11 @@ npm run dev
 npm run build
 npm run pack
 ```
+
+### Getting Supabase Credentials
+
+1. Create a free account at [Supabase](https://supabase.com)
+2. Create a new project
+3. Go to Project Settings → API
+4. Copy your project URL and anon/public key
+5. Add them to your `.env` file

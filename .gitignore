@@ -55,6 +55,10 @@ build/
 .env.*
 !.env.example
 
+# Supabase config with project ID
+supabase/config.toml
+!supabase/config.toml.example
+
 # ================================
 
 # IDE / Editor

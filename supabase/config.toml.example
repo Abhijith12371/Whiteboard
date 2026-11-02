@@ -1,4 +1,6 @@
-project_id = "ltkjrxgsrsiecqoxxwgg"
+# project_id = "your-project-id-here"
+# Copy this file to config.toml and replace with your actual Supabase project ID
+# Get it from: https://supabase.com/dashboard/project/_/settings/general
 
 # Functions are deployed with the Supabase CLI:
 #   supabase functions deploy r2-upload-url
