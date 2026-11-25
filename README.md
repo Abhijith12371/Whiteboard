@@ -1,6 +1,8 @@
 # Digiboard
 
-A desktop whiteboard app for Windows with an infinite canvas for drawing, diagramming, and brainstorming. It works offline, and you can sign in to sync boards across devices and share them with others. Digiboard is available on the Microsoft Store.
+A desktop whiteboard app for Windows with an infinite canvas for drawing, diagramming, and brainstorming. It works offline, and you can sign in to sync boards across devices and share them with others. Digiboard is available on the [Microsoft Store](https://apps.microsoft.com/detail/9NLXPX1F50B2).
+
+[**Get it from the Microsoft Store**](https://apps.microsoft.com/detail/9NLXPX1F50B2)
 
 Built with Electron, React, TypeScript, Konva, Vite, Tailwind CSS, and Supabase.
 
@@ -31,7 +33,7 @@ Built with Electron, React, TypeScript, Konva, Vite, Tailwind CSS, and Supabase.
 
 ## Installation
 
-Install Digiboard from the Microsoft Store, or download the compiled Windows executable from the Releases page.
+Install Digiboard from the [Microsoft Store](https://apps.microsoft.com/detail/9NLXPX1F50B2), or download the compiled Windows executable from the Releases page.
 
 1. Go to the [Releases](../../releases) tab on GitHub.
 2. Download `Whiteboard Setup X.X.X.exe` for the installer or `Whiteboard X.X.X.exe` for the portable version.
