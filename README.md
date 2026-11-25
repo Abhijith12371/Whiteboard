@@ -4,6 +4,14 @@ A desktop whiteboard app for Windows with an infinite canvas for drawing, diagra
 
 Built with Electron, React, TypeScript, Konva, Vite, Tailwind CSS, and Supabase.
 
+## Screenshots
+
+![A board with a sticky note, an arrow, and a shape](docs/screenshots/board.png)
+
+![Board dashboard with your boards and boards shared with you](docs/screenshots/dashboard.png)
+
+![Empty canvas with the toolbar and the color and size options](docs/screenshots/canvas.png)
+
 ## Features
 
 - Infinite canvas with panning and zooming
