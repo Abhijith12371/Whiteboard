@@ -1,7 +1,7 @@
 -- ============================================================================
 -- DigiBoard — board sharing
 --
--- Applies only the sharing surface, on top of supabase-schema-clean.sql.
+-- Applies only the sharing surface, on top of 01-schema.sql. Run 03-rls.sql after it.
 -- Idempotent: safe to re-run.
 --
 -- The whole point of the SECURITY DEFINER helpers is to answer "can this user

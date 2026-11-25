@@ -1,6 +1,6 @@
 -- ============================================================================
--- STEP 2: DIGIBOARD DATABASE SCHEMA
--- Run this AFTER running supabase-cleanup.sql
+-- STEP 1 of 3: DIGIBOARD DATABASE SCHEMA
+-- Run this first on a new Supabase project, then 02-sharing.sql and 03-rls.sql
 -- ============================================================================
 
 -- Enable UUID extension

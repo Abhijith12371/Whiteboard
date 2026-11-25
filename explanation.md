@@ -25,9 +25,9 @@ A comprehensive reference covering every aspect of this app: how it was built, h
 
 ## 1. Project Overview
 
-**Digiboard** (marketed as *Whiteboard*) is a desktop whiteboard application built with Electron + React. It clones the core experience of Microsoft Whiteboard: an infinite canvas where users can draw, annotate, add shapes, sticky notes, text, and images — all saved locally and persistable across sessions.
+**Digiboard** (marketed as *Whiteboard*) is a desktop whiteboard application built with Electron + React. It provides an infinite canvas where users can draw, annotate, add shapes, sticky notes, text, and images — all saved locally and persistable across sessions.
 
-- **Version:** 1.0.3
+- **Version:** 1.0.7
 - **App ID:** `com.digiboard.app`
 - **Publisher:** Abhijith N (`AbhijithN.Digiboard`)
 - **Platform:** Windows 10/11 (x64, via Electron)

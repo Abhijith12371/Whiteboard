@@ -48,7 +48,7 @@ DigiBoard now has production-ready authentication and cloud sync capabilities wh
 - Local board migration support
 
 #### 5. Database Schema
-- **File**: `supabase-schema.sql`
+- **Files**: `supabase/sql/01-schema.sql`, `02-sharing.sql`, `03-rls.sql`
 - Complete SQL schema with RLS policies
 - Tables:
   - `profiles` - User profiles
@@ -80,8 +80,11 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ### 3. Run Database Migrations
 
 1. Open your Supabase project SQL Editor
-2. Copy and paste the contents of `supabase-schema.sql`
-3. Run the SQL script
+2. Run these files in order, pasting each one into the editor:
+   1. `supabase/sql/01-schema.sql`
+   2. `supabase/sql/02-sharing.sql`
+   3. `supabase/sql/03-rls.sql`
+3. Check that each one finishes without errors
 4. Verify tables are created with RLS enabled
 
 ### 4. Configure Google OAuth (Optional)
@@ -252,7 +255,7 @@ Create server-side API for image uploads:
 ### Config
 - `.env` - Environment variables (git-ignored)
 - `.env.example` - Template
-- `supabase-schema.sql` - Database schema
+- `supabase/sql/` - Database schema, sharing, and RLS policies
 
 ### App Integration
 - `src/App.tsx` - Auth initialization + sync engine
